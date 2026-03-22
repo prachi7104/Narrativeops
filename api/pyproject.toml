@@ -22,3 +22,6 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["api"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
