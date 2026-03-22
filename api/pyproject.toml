@@ -1,0 +1,24 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+    "venv/",
+    "__pycache__/",
+    "tests/"
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B"    # flake8-bugbear
+]
+ignore = [
+    "E501"  # line too long (handled by line-length)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api"]
