@@ -1,0 +1,5 @@
+// Reference only: production backend deploys to Render because Vercel free tier serverless functions time out after ~10s, while NarrativeOps pipeline runs take 60-120s.
+{
+	"builds": [{"src": "main.py", "use": "@vercel/python"}],
+	"routes": [{"src": "/(.*)", "dest": "main.py"}]
+}
