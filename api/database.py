@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 from supabase import Client, create_client
 
 logger = logging.getLogger(__name__)
+
+UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
 _client: Client | None = None
 
@@ -286,3 +289,176 @@ def get_enabled_rules() -> list[dict]:
     except Exception as exc:
         logger.exception("Failed to fetch enabled compliance rules: %s", exc)
         return []
+
+
+def get_org_rules(session_id: str) -> list[dict]:
+    """Get enabled organization rules for a session, with errors first."""
+    client = get_supabase_client()
+    if client is None:
+        return []
+
+    try:
+        response = (
+            client.table("org_rules")
+            .select("*")
+            .eq("session_id", session_id)
+            .eq("enabled", True)
+            .order("severity", desc=False)
+            .execute()
+        )
+        return list(response.data or [])
+    except Exception as exc:
+        logger.exception("Failed to get org rules for session_id=%s: %s", session_id, exc)
+        return []
+
+
+def save_org_rules(session_id: str, rules: list[dict]) -> None:
+    """Bulk insert organization rules for a session."""
+    client = get_supabase_client()
+    if client is None:
+        return None
+
+    try:
+        rows = []
+        for rule in rules:
+            rows.append(
+                {
+                    "session_id": session_id,
+                    "rule_id": rule.get("rule_id", ""),
+                    "rule_text": rule.get("rule_text", ""),
+                    "category": rule.get("category", ""),
+                    "severity": rule.get("severity", "warning"),
+                    "source": rule.get("source", "default"),
+                }
+            )
+
+        if rows:
+            client.table("org_rules").insert(rows).execute()
+    except Exception as exc:
+        logger.exception("Failed to save org rules for session_id=%s: %s", session_id, exc)
+    return None
+
+
+def get_trend_cache(topic_hash: str) -> dict | None:
+    """Return cached trend context for a topic when it is fresh (within 6 hours)."""
+    client = get_supabase_client()
+    if client is None:
+        return None
+
+    try:
+        cutoff = (datetime.now(UTC) - timedelta(hours=6)).isoformat()
+        response = (
+            client.table("trend_cache")
+            .select("*")
+            .eq("topic_hash", topic_hash)
+            .gt("cached_at", cutoff)
+            .limit(1)
+            .execute()
+        )
+        rows = response.data or []
+        return rows[0] if rows else None
+    except Exception as exc:
+        logger.exception("Failed to get trend cache for topic_hash=%s: %s", topic_hash, exc)
+        return None
+
+
+def upsert_trend_cache(topic_hash: str, topic_text: str, snippets: list, sources: list) -> None:
+    """Upsert trend cache payload by topic hash."""
+    client = get_supabase_client()
+    if client is None:
+        return None
+
+    try:
+        payload = {
+            "topic_hash": topic_hash,
+            "topic_text": topic_text,
+            "snippets": snippets,
+            "sources": sources,
+            "cached_at": datetime.now(UTC).isoformat(),
+        }
+        client.table("trend_cache").upsert(payload, on_conflict="topic_hash").execute()
+    except Exception as exc:
+        logger.exception("Failed to upsert trend cache for topic_hash=%s: %s", topic_hash, exc)
+    return None
+
+
+def save_editorial_correction(
+    run_id: str,
+    channel: str,
+    original_text: str,
+    corrected_text: str,
+    content_category: str,
+    diff_summary: str,
+) -> None:
+    """Insert one editorial correction row."""
+    client = get_supabase_client()
+    if client is None:
+        return None
+
+    try:
+        payload = {
+            "run_id": run_id,
+            "channel": channel,
+            "original_text": original_text,
+            "corrected_text": corrected_text,
+            "content_category": content_category,
+            "diff_summary": diff_summary,
+        }
+        client.table("editorial_corrections").insert(payload).execute()
+    except Exception as exc:
+        logger.exception("Failed to save editorial correction for run_id=%s: %s", run_id, exc)
+    return None
+
+
+def get_recent_corrections(content_category: str, limit: int = 3) -> list[dict]:
+    """Get recent editorial corrections for a content category."""
+    client = get_supabase_client()
+    if client is None:
+        return []
+
+    try:
+        response = (
+            client.table("editorial_corrections")
+            .select("original_text,corrected_text,diff_summary")
+            .eq("content_category", content_category)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return list(response.data or [])
+    except Exception as exc:
+        logger.exception(
+            "Failed to get recent corrections for content_category=%s: %s",
+            content_category,
+            exc,
+        )
+        return []
+
+
+def save_pipeline_metrics(run_id: str, metrics: dict) -> None:
+    """Upsert run-level pipeline metrics by run_id."""
+    client = get_supabase_client()
+    if client is None:
+        return None
+
+    try:
+        payload = {"run_id": run_id, **metrics}
+        client.table("pipeline_metrics").upsert(payload, on_conflict="run_id").execute()
+    except Exception as exc:
+        logger.exception("Failed to save pipeline metrics for run_id=%s: %s", run_id, exc)
+    return None
+
+
+def get_pipeline_metrics(run_id: str) -> dict | None:
+    """Fetch pipeline metrics row for a run."""
+    client = get_supabase_client()
+    if client is None:
+        return None
+
+    try:
+        response = client.table("pipeline_metrics").select("*").eq("run_id", run_id).limit(1).execute()
+        rows = response.data or []
+        return rows[0] if rows else None
+    except Exception as exc:
+        logger.exception("Failed to get pipeline metrics for run_id=%s: %s", run_id, exc)
+        return None

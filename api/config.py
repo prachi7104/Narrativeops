@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = Field(..., min_length=1)
     SUPABASE_URL: str = Field(..., min_length=1)
     SUPABASE_ANON_KEY: str = Field(..., min_length=1)
+    TAVILY_API_KEY: str | None = None
 
     @validator(
         "GROQ_API_KEY_HEAVY",
