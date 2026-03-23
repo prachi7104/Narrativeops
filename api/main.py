@@ -7,7 +7,7 @@ import logging
 import threading
 import uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
@@ -17,6 +17,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 
 from api import database
+from api.agents.rule_extractor_agent import extract_rules_from_pdf
 from api.graph.state import ContentState
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,9 @@ class PatchOutputRequest(BaseModel):
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    from api.data.seed_default_rules import seed_default_rules
+
+    seed_default_rules()
     global APP_EVENT_LOOP
     APP_EVENT_LOOP = asyncio.get_running_loop()
     logger.info("NarrativeOps API starting")
@@ -143,6 +147,28 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "version": "1.0.0"}
+
+
+@app.post("/api/upload-guide")
+async def upload_brand_guide(
+    file: UploadFile = File(...),  # noqa: B008
+    session_id: str = Form(...),  # noqa: B008
+) -> dict:
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="PDF file too large (max 10MB)")
+
+    result = extract_rules_from_pdf(pdf_bytes, session_id)
+
+    return {
+        "session_id": session_id,
+        "rules_extracted": result.get("count", 0),
+        "preview": result.get("preview", []),
+        "error": result.get("error"),
+    }
 
 
 @app.post("/api/pipeline/run")

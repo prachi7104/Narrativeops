@@ -3,11 +3,35 @@ Compliance agent: Checks draft against compliance rules.
 """
 
 import json
+import logging
 import time
 from pathlib import Path
 
+from api.config import settings
+from api.database import get_org_rules
 from api.graph.state import ContentState
 from api.llm import call_llm
+
+logger = logging.getLogger(__name__)
+
+
+def _load_json_rules() -> list[dict]:
+    """Load enabled compliance rules from local JSON fallback."""
+    rules_path = Path(__file__).parent.parent / "data" / "compliance_rules.json"
+    with open(rules_path) as f:
+        all_rules = json.load(f)
+
+    enabled_rules = [r for r in all_rules if r.get("enabled", False)]
+    return [
+        {
+            "rule_id": r.get("id", ""),
+            "category": r.get("category", ""),
+            "rule_text": r.get("rule_text", ""),
+            "severity": r.get("severity", "warning"),
+            "source": "json_file",
+        }
+        for r in enabled_rules
+    ]
 
 
 def run_compliance_agent(state: ContentState) -> dict:
@@ -19,16 +43,53 @@ def run_compliance_agent(state: ContentState) -> dict:
     """
     draft = state.get("draft", "")
     current_iterations = state.get("compliance_iterations", 0)
+    session_id = str(state.get("session_id", "") or "").strip()
 
-    # Load rules from JSON at call time (not module import time)
-    rules_path = Path(__file__).parent.parent / "data" / "compliance_rules.json"
-    with open(rules_path) as f:
-        all_rules = json.load(f)
+    # Load rules dynamically from Supabase by session when available.
+    rules_source = "json_file"
+    combined_rules: list[dict]
+    if session_id:
+        try:
+            if settings.SUPABASE_URL and settings.SUPABASE_ANON_KEY:
+                rules = get_org_rules(session_id)
+            else:
+                rules = []
 
-    # Filter enabled rules and format them
-    enabled_rules = [r for r in all_rules if r.get("enabled", False)]
+            if len(rules) > 0:
+                rules_source = "org_rules"
+                default_rules = get_org_rules("default")
+                org_rule_ids = {str(r.get("rule_id", "")) for r in rules}
+                combined_rules = rules + [
+                    r for r in default_rules if str(r.get("rule_id", "")) not in org_rule_ids
+                ]
+            else:
+                combined_rules = get_org_rules("default")
+                rules_source = "default"
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch Supabase rules for session_id=%s; falling back to JSON rules: %s",
+                session_id,
+                exc,
+            )
+            combined_rules = _load_json_rules()
+            rules_source = "json_file"
+    else:
+        combined_rules = _load_json_rules()
+        rules_source = "json_file"
+
+    if not combined_rules:
+        combined_rules = _load_json_rules()
+        rules_source = "json_file"
+
+    # Format rules for prompt, including source attribution.
     formatted_rules = "\n".join(
-        [f"{r['id']}: [{r['category']}] {r['rule_text']}" for r in enabled_rules]
+        [
+            f"{str(r.get('rule_id', ''))}: "
+            f"[{str(r.get('source', 'json_file')).upper()}] "
+            f"[{str(r.get('category', ''))}] "
+            f"{str(r.get('rule_text', ''))}"
+            for r in combined_rules
+        ]
     )
 
     # System prompt with exact JSON schema
@@ -120,6 +181,8 @@ DRAFT:
         "duration_ms": duration_ms,
         "verdict": verdict,
         "violations": len(annotations),
+        "rules_source": rules_source,
+        "rules_checked": len(combined_rules),
         "output_summary": summary[:100] if summary else "No violations found"
     }
 
@@ -127,6 +190,8 @@ DRAFT:
         "compliance_verdict": verdict,
         "compliance_feedback": annotations,
         "compliance_iterations": current_iterations + 1,
+        "org_rules_count": len(combined_rules),
+        "rules_source": rules_source,
         "pipeline_status": "compliance_complete",
         "audit_log": state.get("audit_log", []) + [audit_entry]
     }
