@@ -4,7 +4,7 @@ LangGraph pipeline for NarrativeOps content generation.
 This module builds the multi-agent content generation pipeline with:
 - Sequential processing through intake -> draft -> compliance -> localization -> format
 - Conditional routing after compliance (pass/revise/escalate)
-- Human approval checkpoint before final formatting
+- Human approval checkpoint after formatting
 - Memory checkpointing for state persistence
 """
 
@@ -48,7 +48,8 @@ def build_pipeline():
         5. compliance_agent: Check compliance rules
         6. [Conditional] -> draft_agent (revise) OR localization_agent (pass) OR human_escalation (reject/max iterations)
         7. localization_agent: Adapt to Hindi
-        8. format_agent: Generate channel-specific outputs (INTERRUPT for human approval)
+        8. format_agent: Generate channel-specific outputs
+        9. [INTERRUPT] Human approval checkpoint
         9. END
 
     Returns:
@@ -91,11 +92,11 @@ def build_pipeline():
     graph.add_edge("format_agent", END)
     graph.add_edge("human_escalation", END)
 
-    # Compile with checkpointer and interrupt for human approval
+    # Compile with checkpointer and interrupt for human approval after outputs are generated
     checkpointer = MemorySaver()
     compiled_graph = graph.compile(
         checkpointer=checkpointer,
-        interrupt_before=["format_agent"]
+        interrupt_after=["format_agent"]
     )
 
     return compiled_graph

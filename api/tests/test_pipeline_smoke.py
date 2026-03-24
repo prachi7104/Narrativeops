@@ -40,7 +40,7 @@ def test_stub_pipeline_runs_end_to_end():
     - All agents run in correct sequence
     - Routing logic works correctly
     - State updates propagate through the pipeline
-    - Human approval interrupt is hit before format_agent
+    - Human approval interrupt is hit after format_agent
     """
     # Build pipeline
     pipeline = build_pipeline()
@@ -59,6 +59,8 @@ def test_stub_pipeline_runs_end_to_end():
         # Phase 1 B1/B3 required fields
         "session_id": "smoke-test-session",
         "content_category": "general",
+        "output_format": "multi_platform_pack",
+        "output_options": ["blog", "twitter", "linkedin", "whatsapp"],
         "strategy": {},
         "trend_context": "",
         "trend_sources": [],
@@ -87,13 +89,13 @@ def test_stub_pipeline_runs_end_to_end():
     # Configure with thread_id for checkpointing
     config = {"configurable": {"thread_id": "smoke-test-001"}}
 
-    # First invoke: runs until interrupt_before format_agent
+    # First invoke: runs until interrupt_after format_agent
     result = _invoke_with_live_model_guard(pipeline, initial_state, config)
 
     # Verify state after reaching interrupt
-    # Both localization_complete and escalated are valid outcomes due to LLM non-determinism
+    # Both awaiting_approval and escalated are valid outcomes due to LLM non-determinism
     # in compliance checks - both prove the pipeline ran successfully
-    assert result["pipeline_status"] in ["localization_complete", "escalated"], \
+    assert result["pipeline_status"] in ["awaiting_approval", "escalated"], \
         f"Pipeline should complete or escalate, got: {result['pipeline_status']}"
 
     # If escalated, skip format agent verification (pipeline stopped early)
@@ -101,20 +103,24 @@ def test_stub_pipeline_runs_end_to_end():
         assert result.get("escalation_required") is True
         return  # Test passes - pipeline executed successfully to escalation point
 
-    # Continue with localization_complete verification
-    assert len(result["audit_log"]) >= 4  # intake, draft, compliance, localization
+    # Continue with awaiting_approval verification
+    assert len(result["audit_log"]) >= 5  # intake, draft, compliance, localization, format
     assert "##INTRO" in result["draft"]
     assert "##BODY" in result["draft"]
     assert "##CONCLUSION" in result["draft"]
     assert result["compliance_verdict"] == "PASS"
     assert result["localized_hi"] != ""
+    assert result["blog_html"] != ""
+    assert len(result["twitter_thread"]) > 0
+    assert result["linkedin_post"] != ""
+    assert result["whatsapp_message"] != ""
 
-    # Second invoke: continue past interrupt to run format_agent
+    # Second invoke: continue past interrupt to reach END
     final_result = _invoke_with_live_model_guard(pipeline, None, config)
 
-    # Verify final state after format_agent completes
+    # Verify final state remains approval-ready with generated channels
     assert final_result["pipeline_status"] == "awaiting_approval"
-    assert len(final_result["audit_log"]) >= 5  # all agents including format
+    assert len(final_result["audit_log"]) >= 5
     assert final_result["blog_html"] != ""
     assert len(final_result["twitter_thread"]) > 0
     assert final_result["linkedin_post"] != ""

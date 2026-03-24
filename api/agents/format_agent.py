@@ -40,6 +40,11 @@ def _get_output_format(state: ContentState) -> str:
 def _get_output_options(state: ContentState) -> list[str]:
     raw_options = state.get("output_options", [])
     if not isinstance(raw_options, list):
+        logger.warning(
+            "Invalid output_options type for run_id=%s: %s. Falling back to legacy format/default options.",
+            state.get("run_id", "unknown"),
+            type(raw_options).__name__,
+        )
         raw_options = []
 
     normalized: list[str] = []

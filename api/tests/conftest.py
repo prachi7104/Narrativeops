@@ -59,6 +59,8 @@ def minimal_content_state():
             # Fields added in Phase 1 B1/B3 fix
             "session_id": "test-session",
             "content_category": "general",
+            "output_format": "multi_platform_pack",
+            "output_options": ["blog", "twitter", "linkedin", "whatsapp"],
             "strategy": {},
             "trend_context": "",
             "trend_sources": [],

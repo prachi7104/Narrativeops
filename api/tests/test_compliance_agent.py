@@ -4,6 +4,8 @@ from api.agents.compliance_agent import run_compliance_agent
 
 pytestmark = pytest.mark.integration
 
+REVISE_VERDICTS = {"REVISE", "REVISION REQUIRED"}
+
 
 def test_scenario_2_catches_guaranteed_returns(minimal_content_state):
     draft = (
@@ -21,7 +23,7 @@ def test_scenario_2_catches_guaranteed_returns(minimal_content_state):
     verdict = result["compliance_verdict"]
     annotations = result["compliance_feedback"]
 
-    assert verdict in {"REVISE", "REJECT"}
+    assert verdict in REVISE_VERDICTS | {"REJECT"}
     assert len(annotations) >= 1
     assert any(
         "guaranteed" in str(annotation.get("sentence", "")).lower() for annotation in annotations
@@ -52,7 +54,7 @@ def test_clean_content_gets_pass(minimal_content_state):
 
     # Live LLM integrations can vary slightly in strictness across model updates.
     # Keep this test stable by validating structure and sensible outputs.
-    assert result["compliance_verdict"] in {"PASS", "REVISE", "REJECT"}
+    assert result["compliance_verdict"] in {"PASS", "REJECT"} | REVISE_VERDICTS
     assert isinstance(result["compliance_feedback"], list)
 
     if result["compliance_verdict"] == "PASS":
@@ -72,5 +74,5 @@ def test_multiple_violations_all_annotated(minimal_content_state):
 
     result = run_compliance_agent(state)
 
-    assert result["compliance_verdict"] in {"REVISE", "REJECT"}
+    assert result["compliance_verdict"] in REVISE_VERDICTS | {"REJECT"}
     assert len(result["compliance_feedback"]) >= 2

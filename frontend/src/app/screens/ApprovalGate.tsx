@@ -371,13 +371,24 @@ export function ApprovalGate() {
         );
       }
 
+      const label =
+        activeTab === 'op_ed'
+          ? 'ET Op-Ed'
+          : activeTab === 'explainer_box'
+            ? 'ET Explainer Box'
+            : 'Blog';
+
       return hasHtml ? (
-        <div
-          className="bg-white text-black p-8 rounded-lg prose max-w-none"
-          dangerouslySetInnerHTML={{ __html: activeContent }}
-        />
+        <div className="bg-white text-black p-8 rounded-lg">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+          <div
+            className="prose max-w-none"
+            dangerouslySetInnerHTML={{ __html: activeContent }}
+          />
+        </div>
       ) : (
         <div className="bg-bg-surface border border-border-default p-6 rounded-lg">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-tertiary">{label}</p>
           <p className="whitespace-pre-wrap text-text-primary leading-relaxed">{stripHTML(activeContent)}</p>
         </div>
       );
@@ -431,7 +442,9 @@ export function ApprovalGate() {
   if (outputOptions.includes('whatsapp')) {
     tabs.push({ id: 'whatsapp', label: 'WhatsApp' });
   }
-  tabs.push({ id: 'hindi', label: 'Hindi' });
+  if ((content.hindi || '').trim()) {
+    tabs.push({ id: 'hindi', label: 'Hindi' });
+  }
 
   return (
     <div className="min-h-screen bg-bg-primary">
