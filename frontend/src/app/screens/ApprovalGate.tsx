@@ -2,8 +2,14 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import { Twitter, Linkedin, MessageCircle, FileText, Edit3, Check, X, ArrowLeft } from 'lucide-react';
 
-import { getOutputs, getMetrics, captureDiff, approvePipeline } from '../api/client';
-import type { PipelineOutput, PipelineMetrics } from '../api/types';
+import { getOutputs, getMetrics, captureDiff, approvePipeline, getAuditTrail } from '../api/client';
+import type {
+  AuditEvent,
+  ComplianceAnnotation,
+  ComplianceAuditSummary,
+  PipelineOutput,
+  PipelineMetrics,
+} from '../api/types';
 
 type Channel = 'blog' | 'twitter' | 'linkedin' | 'whatsapp' | 'hindi';
 
@@ -15,23 +21,45 @@ interface ChannelContent {
   hindi?: string;
 }
 
-const COMPLIANCE_RULES = [
-  'No financial advice',
-  'No medical claims',
-  'Proper citations included',
-  'No misleading headlines',
-  'Factual accuracy verified',
-  'Appropriate tone maintained',
-  'No prohibited terms',
-  'Disclaimer added where required',
-];
-
 function stripHTML(value: string): string {
   return value.replace(/<[^>]*>/g, '').trim();
 }
 
+function parseComplianceSummary(events: AuditEvent[]): ComplianceAuditSummary | null {
+  const event = events.find((item) => item.agent_name === 'compliance_agent');
+  if (!event?.output_summary) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(event.output_summary) as ComplianceAuditSummary;
+    if (parsed && typeof parsed === 'object') {
+      return parsed;
+    }
+  } catch {
+    return {
+      format: 'legacy_text',
+      verdict: event.verdict || undefined,
+      summary: event.output_summary,
+      annotations: [],
+    };
+  }
+
+  return null;
+}
+
+function getSeverity(value: string | undefined): 'error' | 'warning' | 'info' {
+  if (value === 'error' || value === 'warning') {
+    return value;
+  }
+  return 'info';
+}
+
 function mapOutputsToContent(outputs: PipelineOutput[]): ChannelContent {
-  const blogRaw = outputs.find((o) => o.channel === 'blog' && o.language === 'en')?.content || '';
+  const blogRaw =
+    outputs.find((o) => o.channel === 'blog' && o.language === 'en')?.content ||
+    outputs.find((o) => o.channel === 'blog')?.content ||
+    '';
   const twitterRaw = outputs.find((o) => o.channel === 'twitter' && o.language === 'en')?.content || '[]';
 
   let twitterCombined = '';
@@ -43,7 +71,7 @@ function mapOutputsToContent(outputs: PipelineOutput[]): ChannelContent {
   }
 
   return {
-    blog: stripHTML(blogRaw),
+    blog: blogRaw,
     twitter: twitterCombined,
     linkedin: outputs.find((o) => o.channel === 'linkedin')?.content || '',
     whatsapp: outputs.find((o) => o.channel === 'whatsapp')?.content || '',
@@ -62,21 +90,48 @@ export function ApprovalGate() {
   const [editedContent, setEditedContent] = useState<ChannelContent>({});
   const [originalContent, setOriginalContent] = useState<ChannelContent>({});
   const [metrics, setMetrics] = useState<PipelineMetrics | null>(null);
+  const [complianceSummary, setComplianceSummary] = useState<ComplianceAuditSummary | null>(null);
   const [toast, setToast] = useState('');
   const [unsavedTabs, setUnsavedTabs] = useState<Set<Channel>>(new Set());
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([getOutputs(id), getMetrics(id)])
-      .then(([outputs, loadedMetrics]) => {
+    Promise.all([getOutputs(id), getMetrics(id), getAuditTrail(id)])
+      .then(([outputs, loadedMetrics, auditEvents]) => {
         const mapped = mapOutputsToContent(outputs);
         setContent(mapped);
         setEditedContent(mapped);
         setOriginalContent(mapped);
         setMetrics(loadedMetrics);
+        setComplianceSummary(parseComplianceSummary(auditEvents));
       })
       .catch((err) => console.error('Failed to load outputs:', err));
   }, [id]);
+
+  const complianceAnnotations = (complianceSummary?.annotations || []) as ComplianceAnnotation[];
+  const groupedAnnotations = complianceAnnotations.reduce(
+    (acc, annotation) => {
+      const severity = getSeverity(annotation.severity);
+      if (!acc[severity]) {
+        acc[severity] = [];
+      }
+      acc[severity].push(annotation);
+      return acc;
+    },
+    { error: [] as ComplianceAnnotation[], warning: [] as ComplianceAnnotation[], info: [] as ComplianceAnnotation[] },
+  );
+
+  const severityOrder: Array<'error' | 'warning' | 'info'> = ['error', 'warning', 'info'];
+  const severityLabel: Record<'error' | 'warning' | 'info', string> = {
+    error: 'High severity',
+    warning: 'Medium severity',
+    info: 'Low severity',
+  };
+  const severityBadgeStyle: Record<'error' | 'warning' | 'info', string> = {
+    error: 'bg-error/10 text-error border-error/30',
+    warning: 'bg-warning/10 text-warning border-warning/30',
+    info: 'bg-accent-primary/10 text-accent-primary border-accent-primary/30',
+  };
 
   const handleEdit = () => {
     setEditMode(true);
@@ -224,11 +279,27 @@ export function ApprovalGate() {
 
     // Preview mode
     if (activeTab === 'blog') {
-      return (
+      const hasHtml = /<\/?[a-z][\s\S]*>/i.test(activeContent);
+
+      if (!activeContent.trim()) {
+        return (
+          <div className="bg-bg-surface border border-border-default p-6 rounded-lg">
+            <p className="text-sm text-text-secondary">
+              No blog content is available for this run yet.
+            </p>
+          </div>
+        );
+      }
+
+      return hasHtml ? (
         <div
           className="bg-white text-black p-8 rounded-lg prose max-w-none"
           dangerouslySetInnerHTML={{ __html: activeContent }}
         />
+      ) : (
+        <div className="bg-bg-surface border border-border-default p-6 rounded-lg">
+          <p className="whitespace-pre-wrap text-text-primary leading-relaxed">{stripHTML(activeContent)}</p>
+        </div>
       );
     }
 
@@ -396,16 +467,78 @@ export function ApprovalGate() {
           {/* Compliance Summary */}
           <div className="bg-bg-surface border border-border-default rounded-[--radius-md] p-4">
             <h3 className="text-text-primary mb-4 text-sm font-medium">Compliance summary</h3>
-            <div className="space-y-2">
-              {COMPLIANCE_RULES.map((rule) => (
-                <div key={rule} className="flex items-start gap-2">
-                  <div className="w-4 h-4 bg-success/20 rounded-full flex items-center justify-center mt-0.5 flex-shrink-0">
-                    <Check className="w-3 h-3 text-success" />
-                  </div>
-                  <span className="text-text-secondary text-xs">{rule}</span>
+            {!complianceSummary ? (
+              <p className="text-xs text-text-secondary">Compliance details are not available for this run yet.</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-secondary">Verdict</span>
+                  <span className="text-text-primary font-medium">{complianceSummary.verdict || 'N/A'}</span>
                 </div>
-              ))}
-            </div>
+                {complianceSummary.summary && (
+                  <p className="text-xs text-text-secondary">{complianceSummary.summary}</p>
+                )}
+                {complianceAnnotations.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {severityOrder.map((severity) => {
+                        const count = groupedAnnotations[severity].length;
+                        if (count === 0) {
+                          return null;
+                        }
+                        return (
+                          <span
+                            key={severity}
+                            className={`rounded-full border px-2 py-1 text-[11px] ${severityBadgeStyle[severity]}`}
+                          >
+                            {severityLabel[severity]}: {count}
+                          </span>
+                        );
+                      })}
+                    </div>
+
+                    {severityOrder.map((severity) => {
+                      const items = groupedAnnotations[severity];
+                      if (items.length === 0) {
+                        return null;
+                      }
+
+                      return (
+                        <div key={severity} className="space-y-2">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-text-tertiary">
+                            {severityLabel[severity]}
+                          </p>
+                          {items.map((annotation, index) => (
+                            <div
+                              key={`annotation-${severity}-${index}`}
+                              className="rounded-md border border-border-default bg-bg-primary p-2"
+                            >
+                              <div className="mb-1 flex items-center gap-2">
+                                <span className={`rounded-full border px-2 py-0.5 text-[10px] ${severityBadgeStyle[severity]}`}>
+                                  {severity.toUpperCase()}
+                                </span>
+                                {annotation.rule_id && (
+                                  <span className="text-[10px] text-text-tertiary">{annotation.rule_id}</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-text-primary">{annotation.message || 'Compliance check'}</p>
+                              {annotation.sentence && (
+                                <p className="mt-1 text-[11px] text-text-tertiary">Sentence: "{annotation.sentence}"</p>
+                              )}
+                              {annotation.suggested_fix && (
+                                <p className="mt-1 text-[11px] text-accent-primary">Suggested fix: {annotation.suggested_fix}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-success">No compliance violations found.</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Audit Trail */}

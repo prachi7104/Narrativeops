@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApprovalGate } from '../app/screens/ApprovalGate';
 
@@ -18,12 +19,14 @@ const mockGetOutputs = vi.fn();
 const mockGetMetrics = vi.fn();
 const mockCaptureDiff = vi.fn();
 const mockApprovePipeline = vi.fn();
+const mockGetAuditTrail = vi.fn();
 
 vi.mock('../app/api/client', () => ({
   getOutputs: (...args: unknown[]) => mockGetOutputs(...args),
   getMetrics: (...args: unknown[]) => mockGetMetrics(...args),
   captureDiff: (...args: unknown[]) => mockCaptureDiff(...args),
   approvePipeline: (...args: unknown[]) => mockApprovePipeline(...args),
+  getAuditTrail: (...args: unknown[]) => mockGetAuditTrail(...args),
 }));
 
 describe('ApprovalGate', () => {
@@ -54,6 +57,37 @@ describe('ApprovalGate', () => {
     });
 
     mockApprovePipeline.mockResolvedValue({ status: 'approved' });
+
+    mockGetAuditTrail.mockResolvedValue([
+      {
+        agent_name: 'compliance_agent',
+        action: 'checked_compliance',
+        verdict: 'REVISE',
+        model_used: 'llama',
+        duration_ms: 120,
+        created_at: new Date().toISOString(),
+        output_summary: JSON.stringify({
+          format: 'compliance_v1',
+          verdict: 'REVISE',
+          summary: '2 issues found',
+          annotations: [
+            {
+              severity: 'error',
+              rule_id: 'SEBI01',
+              message: 'Avoid guaranteed claims',
+              sentence: 'Guaranteed 12% returns',
+              suggested_fix: 'Projected returns may vary with market conditions',
+            },
+            {
+              severity: 'warning',
+              rule_id: 'ASCI03',
+              message: 'Avoid excessive emphasis',
+              sentence: 'BEST EVER!!!',
+            },
+          ],
+        }),
+      },
+    ]);
   });
 
   it('renders metrics panel from API values', async () => {
@@ -82,12 +116,23 @@ describe('ApprovalGate', () => {
       expect(mockCaptureDiff).toHaveBeenCalledWith(
         'run-123',
         'blog',
-        'Original content',
+        '<p>Original content</p>',
         'Corrected content for blog',
         'mutual_fund',
       );
     });
 
     expect(screen.getByText('Correction captured for future drafts')).toBeInTheDocument();
+  });
+
+  it('renders grouped annotation severities and suggested fixes', async () => {
+    render(<ApprovalGate />);
+
+    expect(await screen.findByText('Compliance summary')).toBeInTheDocument();
+    expect(screen.getByText('High severity: 1')).toBeInTheDocument();
+    expect(screen.getByText('Medium severity: 1')).toBeInTheDocument();
+    expect(screen.getByText('Avoid guaranteed claims')).toBeInTheDocument();
+    expect(screen.getByText(/Suggested fix:/i)).toBeInTheDocument();
+    expect(screen.getByText(/SEBI01/i)).toBeInTheDocument();
   });
 });
