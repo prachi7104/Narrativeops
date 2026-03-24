@@ -140,6 +140,31 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
         pipeline = build_pipeline()
         config = {"configurable": {"thread_id": run_id}}
 
+        requested_options = brief.get("output_options", [])
+        if isinstance(requested_options, list):
+            output_options = [str(item).strip() for item in requested_options if str(item).strip()]
+        else:
+            output_options = []
+
+        legacy_output_format = str(brief.get("output_format", "") or "").strip()
+        if legacy_output_format and not output_options:
+            if legacy_output_format == "multi_platform_pack":
+                output_options = ["blog", "twitter", "linkedin", "whatsapp"]
+            elif legacy_output_format == "et_op_ed":
+                output_options = ["et_op_ed"]
+            elif legacy_output_format == "et_explainer_box":
+                output_options = ["et_explainer_box"]
+
+        if not output_options:
+            output_options = ["blog", "twitter", "linkedin", "whatsapp"]
+
+        if "et_op_ed" in output_options:
+            output_format = "et_op_ed"
+        elif "et_explainer_box" in output_options:
+            output_format = "et_explainer_box"
+        else:
+            output_format = "multi_platform_pack"
+
         initial_state: ContentState = {
             "run_id": run_id,
             "brief": brief,
@@ -147,6 +172,8 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
             # Extract top-level fields from brief dict
             "session_id": str(brief.get("session_id", "") or ""),
             "content_category": str(brief.get("content_category", "general") or "general"),
+            "output_format": output_format,
+            "output_options": output_options,
             "strategy": {},
             "trend_context": "",
             "trend_sources": [],

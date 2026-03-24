@@ -24,6 +24,41 @@ const CHANNELS = [
 
 const TONES = ['Authoritative', 'Accessible', 'Analytical', 'Urgent'];
 
+const OUTPUT_FORMATS = [
+  {
+    id: 'et_op_ed',
+    label: 'ET Op-Ed',
+    description: 'Sharp thesis, evidence-led argument, 700-900 words.',
+  },
+  {
+    id: 'et_explainer_box',
+    label: 'ET Explainer Box (Q&A)',
+    description: 'Question-answer structure with concise data pointers.',
+  },
+  {
+    id: 'blog',
+    label: 'Blog',
+    description: 'Long-form blog output view.',
+  },
+  {
+    id: 'linkedin',
+    label: 'LinkedIn',
+    description: 'Professional social post output.',
+  },
+  {
+    id: 'whatsapp',
+    label: 'WhatsApp',
+    description: 'Compact WhatsApp summary output.',
+  },
+  {
+    id: 'twitter',
+    label: 'Twitter',
+    description: 'Thread-ready X/Twitter output.',
+  },
+] as const;
+
+type OutputOption = (typeof OUTPUT_FORMATS)[number]['id'];
+
 const AGENT_STEPS = [
   'Intake Analysis',
   'Trend Research',
@@ -48,6 +83,12 @@ export function BriefConfiguration() {
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['blog', 'twitter']);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['english']);
   const [selectedTone, setSelectedTone] = useState('Accessible');
+  const [selectedOutputOptions, setSelectedOutputOptions] = useState<OutputOption[]>([
+    'blog',
+    'linkedin',
+    'whatsapp',
+    'twitter',
+  ]);
   const [engagementExpanded, setEngagementExpanded] = useState(false);
   const [engagementData, setEngagementData] = useState('{\n  "scenario": 3,\n  "metrics": {\n    "engagement_rate": 0.45\n  }\n}');
 
@@ -108,11 +149,17 @@ export function BriefConfiguration() {
     setRunError(null);
 
     try {
+      const hasLongForm = selectedOutputOptions.includes('et_op_ed') || selectedOutputOptions.includes('et_explainer_box');
+      const outputOptionsToSend = hasLongForm
+        ? selectedOutputOptions
+        : ['blog', ...selectedOutputOptions.filter((item) => item !== 'blog')];
+
       const result = await startPipeline(
         {
           topic: brief.slice(0, 100),
           description: brief,
           content_category: detectCategory(brief),
+          output_options: outputOptionsToSend,
         },
         sessionId,
         parsedEngagementData || null,
@@ -317,7 +364,46 @@ export function BriefConfiguration() {
             </div>
           </div>
 
-          {/* Section 5 - Engagement Data (Collapsible) */}
+          {/* Section 5 - Output options */}
+          <div>
+            <label className="block text-text-primary mb-3 text-sm font-medium">
+              Output options
+            </label>
+            <div className="space-y-3">
+              {OUTPUT_FORMATS.map((item) => {
+                const isSelected = selectedOutputOptions.includes(item.id);
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setSelectedOutputOptions((prev) => {
+                        if (prev.includes(item.id)) {
+                          if (prev.length === 1) return prev;
+                          return prev.filter((option) => option !== item.id);
+                        }
+                        return [...prev, item.id];
+                      });
+                    }}
+                    className={`w-full text-left rounded-md border p-4 transition-colors ${
+                      isSelected
+                        ? 'border-accent-primary bg-accent-primary/10'
+                        : 'border-border-default bg-bg-surface hover:border-text-secondary'
+                    }`}
+                  >
+                    <p className={`text-sm font-medium ${isSelected ? 'text-text-primary' : 'text-text-secondary'}`}>
+                      {item.label}
+                    </p>
+                    <p className="mt-1 text-xs text-text-tertiary">{item.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-text-tertiary">
+              Pick one or more. Selected outputs will appear as separate tabs in Review.
+            </p>
+          </div>
+
+          {/* Section 6 - Engagement Data (Collapsible) */}
           <div>
             <button
               onClick={() => setEngagementExpanded(!engagementExpanded)}

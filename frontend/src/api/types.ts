@@ -1,5 +1,5 @@
 export interface PipelineOutput {
-  channel: "blog" | "twitter" | "linkedin" | "whatsapp" | "article";
+  channel: "blog" | "op_ed" | "explainer_box" | "twitter" | "linkedin" | "whatsapp" | "article";
   language: "en" | "hi";
   content: string;
   approved: boolean;

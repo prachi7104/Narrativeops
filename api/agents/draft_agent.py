@@ -18,6 +18,39 @@ MANDATORY_DISCLAIMER = (
 )
 
 
+def _get_output_format(state: ContentState) -> str:
+    selected = str(state.get("output_format") or "").strip()
+    if selected in {"et_op_ed", "et_explainer_box", "multi_platform_pack"}:
+        return selected
+    return "multi_platform_pack"
+
+
+def _get_format_guidelines(output_format: str) -> str:
+    if output_format == "et_op_ed":
+        return (
+            "Editorial format: ET op-ed.\\n"
+            "- Sharp thesis in the opening paragraph\\n"
+            "- Use evidence-led argumentation and counterpoint\\n"
+            "- Target 700-900 words\\n"
+            "- Strong concluding viewpoint"
+        )
+
+    if output_format == "et_explainer_box":
+        return (
+            "Editorial format: ET explainer box in Q&A style.\\n"
+            "- Use direct question headings and concise answers\\n"
+            "- Include practical data pointers where relevant\\n"
+            "- Keep language analytical and clear\\n"
+            "- Target 600-800 words"
+        )
+
+    return (
+        "Editorial format: multi-platform source draft.\\n"
+        "- Create a robust base article that can be adapted to social channels\\n"
+        "- Keep sections clear and reusable"
+    )
+
+
 def inject_mandatory_disclaimer(draft: str) -> str:
     """Ensure mandatory investment disclaimer is present in the draft."""
     draft_text = draft or ""
@@ -53,6 +86,8 @@ def run_draft_agent(state: ContentState) -> dict:
     current_draft = state.get("draft", "")
     past_feedback = state.get("past_feedback", [])
     content_category = str(state.get("content_category") or "general").strip() or "general"
+    output_format = _get_output_format(state)
+    format_guidelines = _get_format_guidelines(output_format)
 
     recent_corrections: list[dict] = []
     try:
@@ -87,6 +122,7 @@ Revise the draft article below by fixing ONLY the specific flagged sentences.
 
 Tone: {strategy.get('tone', 'authoritative')}
 Word count target: {strategy.get('word_count', 600)}
+    {format_guidelines}
 
 CRITICAL: The output MUST contain these exact section markers:
 ##INTRO
@@ -117,6 +153,7 @@ Format: {strategy.get('format', 'article')}
 Tone: {strategy.get('tone', 'authoritative')}
 Word count: {strategy.get('word_count', 600)} words
 Key messages: {', '.join(strategy.get('key_messages', []))}
+    {format_guidelines}
 
 CRITICAL: The output MUST contain these exact section markers:
 ##INTRO

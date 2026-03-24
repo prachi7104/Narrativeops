@@ -75,39 +75,87 @@ def write_pipeline_outputs(run_id: str, outputs: dict, localized_hi: str) -> Non
         return None
 
     try:
-        rows = [
-            {
-                "run_id": run_id,
-                "channel": "blog",
-                "language": "en",
-                "content": outputs.get("blog_html", ""),
-            },
-            {
-                "run_id": run_id,
-                "channel": "twitter",
-                "language": "en",
-                "content": json.dumps(outputs.get("twitter_thread", [])),
-            },
-            {
-                "run_id": run_id,
-                "channel": "linkedin",
-                "language": "en",
-                "content": outputs.get("linkedin_post", ""),
-            },
-            {
-                "run_id": run_id,
-                "channel": "whatsapp",
-                "language": "en",
-                "content": outputs.get("whatsapp_message", ""),
-            },
-            {
-                "run_id": run_id,
-                "channel": "article",
-                "language": "hi",
-                "content": localized_hi,
-            },
-        ]
-        client.table("pipeline_outputs").insert(rows).execute()
+        rows: list[dict] = []
+
+        blog_html = str(outputs.get("blog_html", "") or "").strip()
+        if blog_html:
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "channel": "blog",
+                    "language": "en",
+                    "content": blog_html,
+                }
+            )
+
+        op_ed_html = str(outputs.get("op_ed_html", "") or "").strip()
+        if op_ed_html:
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "channel": "op_ed",
+                    "language": "en",
+                    "content": op_ed_html,
+                }
+            )
+
+        explainer_box_html = str(outputs.get("explainer_box_html", "") or "").strip()
+        if explainer_box_html:
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "channel": "explainer_box",
+                    "language": "en",
+                    "content": explainer_box_html,
+                }
+            )
+
+        twitter_thread = outputs.get("twitter_thread", [])
+        if isinstance(twitter_thread, list) and len(twitter_thread) > 0:
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "channel": "twitter",
+                    "language": "en",
+                    "content": json.dumps(twitter_thread),
+                }
+            )
+
+        linkedin_post = str(outputs.get("linkedin_post", "") or "").strip()
+        if linkedin_post:
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "channel": "linkedin",
+                    "language": "en",
+                    "content": linkedin_post,
+                }
+            )
+
+        whatsapp_message = str(outputs.get("whatsapp_message", "") or "").strip()
+        if whatsapp_message:
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "channel": "whatsapp",
+                    "language": "en",
+                    "content": whatsapp_message,
+                }
+            )
+
+        localized_content = str(localized_hi or "").strip()
+        if localized_content:
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "channel": "article",
+                    "language": "hi",
+                    "content": localized_content,
+                }
+            )
+
+        if rows:
+            client.table("pipeline_outputs").insert(rows).execute()
     except Exception as exc:
         logger.exception("Failed to write pipeline outputs for %s: %s", run_id, exc)
     return None

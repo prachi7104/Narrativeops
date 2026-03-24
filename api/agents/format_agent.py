@@ -20,6 +20,47 @@ from api.llm import call_llm
 logger = logging.getLogger(__name__)
 
 
+OUTPUT_OPTION_ORDER = [
+    "et_op_ed",
+    "et_explainer_box",
+    "blog",
+    "linkedin",
+    "whatsapp",
+    "twitter",
+]
+
+
+def _get_output_format(state: ContentState) -> str:
+    selected = str(state.get("output_format") or "").strip()
+    if selected in {"et_op_ed", "et_explainer_box", "multi_platform_pack"}:
+        return selected
+    return "multi_platform_pack"
+
+
+def _get_output_options(state: ContentState) -> list[str]:
+    raw_options = state.get("output_options", [])
+    if not isinstance(raw_options, list):
+        raw_options = []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for option in raw_options:
+        value = str(option).strip()
+        if value in OUTPUT_OPTION_ORDER and value not in seen:
+            normalized.append(value)
+            seen.add(value)
+
+    if not normalized:
+        legacy = _get_output_format(state)
+        if legacy == "et_op_ed":
+            return ["et_op_ed"]
+        if legacy == "et_explainer_box":
+            return ["et_explainer_box"]
+        return ["blog", "twitter", "linkedin", "whatsapp"]
+
+    return normalized
+
+
 def _clean_json_response(raw_response: str) -> dict[str, Any]:
     cleaned = raw_response.strip()
     if cleaned.startswith("```json"):
@@ -47,26 +88,52 @@ def run_format_agent(state: ContentState) -> dict:
     draft = state.get("draft", "")
     run_id = state.get("run_id", "")
     model = "llama-3.1-8b-instant"
+    output_options = _get_output_options(state)
 
-    system_prompt = """You are a content formatting specialist.
-Format the compliance-passed English draft into channel-specific outputs.
+    schema_lines = ["{"]
+    if "et_op_ed" in output_options:
+        schema_lines.append(
+            '  "op_ed_html": "<article> semantic HTML. Strong thesis in opening, argument-led structure, analytical close."'
+        )
+    if "et_explainer_box" in output_options:
+        schema_lines.append(
+            '  "explainer_box_html": "<article> semantic HTML in Q&A format with clear question headings and concise answers."'
+        )
+    if "blog" in output_options:
+        schema_lines.append(
+            '  "blog_html": "<article> semantic HTML for the primary blog version."'
+        )
+    if "twitter" in output_options:
+        schema_lines.append(
+            '  "twitter_thread": ["1/N tweet text (max 280 chars)", "2/N ..."]'
+        )
+    if "linkedin" in output_options:
+        schema_lines.append(
+            '  "linkedin_post": "150-300 word LinkedIn post in professional conversational tone."'
+        )
+    if "whatsapp" in output_options:
+        schema_lines.append(
+            '  "whatsapp_message": "80-100 words plain text only, optimized for mobile reading."'
+        )
+    schema_lines.append("}")
+
+    requested = ", ".join(output_options)
+    schema_block = "\n".join(schema_lines)
+
+    system_prompt = f"""You are a content formatting specialist for Economic Times.
+Format the compliance-passed draft into ONLY the requested output variants.
+
+Requested output variants: {requested}
 
 Return ONLY a JSON object with this exact schema:
-{
-  "blog_html": "<article> element with semantic HTML — h1 for title, h2 for sections,
-                p for paragraphs. Include all content from the draft.",
-  "twitter_thread": ["1/N tweet text (max 280 chars)", "2/N ...", ...],
-  "linkedin_post": "150-300 word post. First sentence must create curiosity or state
-                    a surprising fact. Professional but conversational tone.",
-  "whatsapp_message": "80-100 words. Plain text only. No asterisks, no dashes,
-                       no markdown. Short sentences. Easy to read on a phone screen."
-}
+{schema_block}
 
-Twitter rules:
-- Number every tweet: 1/N format where N is the total tweet count
-- Maximum 7 tweets
-- Each tweet must be 280 characters or fewer (enforce this strictly)
-- Last tweet should direct readers to the full article"""
+Rules:
+- Include every requested field exactly once.
+- Do not include any field not listed in the schema.
+- For twitter_thread: number tweets as 1/N, max 7 tweets, each <= 280 chars.
+- Keep tone analytical and publication-ready.
+"""
 
     user_prompt = f"DRAFT:\n{draft}"
 
@@ -83,17 +150,23 @@ Twitter rules:
     result = _clean_json_response(raw_response)
 
     blog_html = str(result.get("blog_html", ""))
+    op_ed_html = str(result.get("op_ed_html", ""))
+    explainer_box_html = str(result.get("explainer_box_html", ""))
     linkedin_post = str(result.get("linkedin_post", ""))
     whatsapp_message = str(result.get("whatsapp_message", ""))
+    twitter_thread: list[str] = []
 
-    raw_thread = result.get("twitter_thread", [])
-    if isinstance(raw_thread, list):
-        twitter_thread = _validate_twitter_thread([str(tweet) for tweet in raw_thread])
-    else:
-        twitter_thread = _validate_twitter_thread([str(raw_thread)])
+    if "twitter" in output_options:
+        raw_thread = result.get("twitter_thread", [])
+        if isinstance(raw_thread, list):
+            twitter_thread = _validate_twitter_thread([str(tweet) for tweet in raw_thread])
+        else:
+            twitter_thread = _validate_twitter_thread([str(raw_thread)])
 
     output_payload = {
         "blog_html": blog_html,
+        "op_ed_html": op_ed_html,
+        "explainer_box_html": explainer_box_html,
         "twitter_thread": twitter_thread,
         "linkedin_post": linkedin_post,
         "whatsapp_message": whatsapp_message,
@@ -104,7 +177,14 @@ Twitter rules:
         "action": "formatted_channels",
         "model": model,
         "duration_ms": duration_ms,
-        "channels": ["blog_html", "twitter_thread", "linkedin_post", "whatsapp_message"],
+        "output_summary": json.dumps(
+            {
+                "format": "output_format_v1",
+                "selected_output_format": _get_output_format(state),
+                "selected_output_options": output_options,
+            }
+        ),
+        "channels": ["blog_html", "op_ed_html", "explainer_box_html", "twitter_thread", "linkedin_post", "whatsapp_message"],
         "twitter_count": len(twitter_thread),
     }
     full_audit_log = state.get("audit_log", []) + [audit_entry]
