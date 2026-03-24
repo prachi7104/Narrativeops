@@ -4,7 +4,6 @@ import pytest
 
 from api import config
 
-
 REQUIRED_ENV = {
     "GROQ_API_KEY_HEAVY": "test-groq-heavy",
     "GROQ_API_KEY_LIGHT": "test-groq-light",
