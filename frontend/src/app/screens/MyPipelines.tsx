@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { ArrowLeft, Search, Filter, Eye, RotateCw, Trash2, Twitter, Linkedin, MessageCircle, FileText } from 'lucide-react';
+import { getRecentRuns, type PipelineRun } from '../../api/client';
 
 type PipelineStatus = 'completed' | 'awaiting' | 'failed' | 'escalated';
 type ComplianceStatus = 'PASS' | 'REVISE' | 'FAIL';
 
-interface Pipeline {
+interface DisplayPipeline {
   id: string;
   topic: string;
   channels: string[];
@@ -15,58 +16,60 @@ interface Pipeline {
   status: PipelineStatus;
 }
 
-const MOCK_PIPELINES: Pipeline[] = [
-  {
-    id: 'demo-123',
-    topic: 'AI in Healthcare',
-    channels: ['blog', 'twitter', 'linkedin'],
-    compliance: 'PASS',
-    language: 'EN, HI',
-    created: '2 hours ago',
-    status: 'completed',
-  },
-  {
-    id: 'demo-124',
-    topic: 'Sustainable Energy Developments',
-    channels: ['blog', 'twitter'],
-    compliance: 'REVISE',
-    language: 'EN',
-    created: '5 hours ago',
-    status: 'awaiting',
-  },
-  {
-    id: 'demo-125',
-    topic: 'Remote Work Culture',
-    channels: ['linkedin', 'whatsapp'],
-    compliance: 'PASS',
-    language: 'EN',
-    created: '1 day ago',
-    status: 'completed',
-  },
-  {
-    id: 'demo-126',
-    topic: 'Crypto Regulations Update',
-    channels: ['blog'],
-    compliance: 'FAIL',
-    language: 'EN',
-    created: '2 days ago',
-    status: 'escalated',
-  },
-  {
-    id: 'demo-127',
-    topic: 'EdTech Innovation Trends',
-    channels: ['twitter', 'linkedin'],
-    compliance: 'PASS',
-    language: 'EN, HI',
-    created: '3 days ago',
-    status: 'completed',
-  },
-];
-
 export function MyPipelines() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+  const [pipelines, setPipelines] = useState<DisplayPipeline[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getRecentRuns()
+      .then((runs: PipelineRun[]) => {
+        // Map API data to display format
+        const displayPipelines: DisplayPipeline[] = runs.map((run) => {
+          // Map status to DisplayPipeline status
+          let displayStatus: PipelineStatus = 'completed';
+          if (run.status === 'awaiting_approval') displayStatus = 'awaiting';
+          else if (run.status === 'failed') displayStatus = 'failed';
+          else if (run.status === 'escalated') displayStatus = 'escalated';
+          else if (run.status === 'completed') displayStatus = 'completed';
+
+          // Format timestamp
+          let createdDisplay = 'Unknown';
+          try {
+            const date = new Date(run.created_at);
+            const now = new Date();
+            const diffMs = now.getTime() - date.getTime();
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+            if (diffHours < 1) createdDisplay = 'Just now';
+            else if (diffHours < 24) createdDisplay = `${diffHours} hours ago`;
+            else if (diffDays === 1) createdDisplay = '1 day ago';
+            else createdDisplay = `${diffDays} days ago`;
+          } catch {
+            createdDisplay = run.created_at;
+          }
+
+          return {
+            id: run.id,
+            topic: run.brief_topic || 'Untitled',
+            channels: ['blog', 'twitter', 'linkedin'], // Default channels
+            compliance: 'PASS' as ComplianceStatus, // Default compliance
+            language: 'EN', // Default language
+            created: createdDisplay,
+            status: displayStatus,
+          };
+        });
+        setPipelines(displayPipelines);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to load pipelines:', err);
+        setLoading(false);
+      });
+  }, []);
 
   const getChannelIcon = (channelId: string) => {
     switch (channelId) {
@@ -120,11 +123,19 @@ export function MyPipelines() {
     }
   };
 
-  const filteredPipelines = MOCK_PIPELINES.filter((pipeline) =>
+  const filteredPipelines = pipelines.filter((pipeline) =>
     pipeline.topic.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (filteredPipelines.length === 0 && searchQuery === '') {
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+        <div className="text-text-secondary">Loading pipelines...</div>
+      </div>
+    );
+  }
+
+  if (filteredPipelines.length === 0 && searchQuery === '' && pipelines.length === 0) {
     return (
       <div className="min-h-screen bg-bg-primary flex items-center justify-center">
         <div className="text-center max-w-md">

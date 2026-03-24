@@ -52,7 +52,7 @@ def run_draft_agent(state: ContentState) -> dict:
     compliance_feedback = state.get("compliance_feedback", [])
     current_draft = state.get("draft", "")
     past_feedback = state.get("past_feedback", [])
-    content_category = state.get("content_category", "general")
+    content_category = str(state.get("content_category") or "general").strip() or "general"
 
     recent_corrections: list[dict] = []
     try:

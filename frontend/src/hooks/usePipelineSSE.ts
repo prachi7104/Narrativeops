@@ -23,7 +23,8 @@ type PipelineSSEEvent = {
   type: string;
   run_id?: string;
   message?: string;
-  [agentName: string]: unknown;
+  data?: Record<string, unknown>;
+  [key: string]: unknown;
 };
 
 export function usePipelineSSE(
@@ -66,13 +67,12 @@ export function usePipelineSSE(
       }
 
       if (event.type === "update") {
-        const reserved = new Set(["type", "run_id", "message"]);
-        for (const [key, value] of Object.entries(event)) {
-          if (reserved.has(key)) {
-            continue;
-          }
-          if (value && typeof value === "object") {
-            onAgentUpdate(key, value as AgentEventPayload);
+        const data = event.data as Record<string, unknown> | undefined;
+        if (data && typeof data === "object") {
+          for (const [key, value] of Object.entries(data)) {
+            if (value && typeof value === "object") {
+              onAgentUpdate(key, value as AgentEventPayload);
+            }
           }
         }
       }

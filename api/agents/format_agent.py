@@ -129,7 +129,8 @@ Twitter rules:
         )
         agent_count = len([entry for entry in state.get("audit_log", []) if entry.get("agent")])
 
-        recent = get_recent_corrections(state.get("content_category", "general"), limit=10)
+        category = str(state.get("content_category") or "general").strip() or "general"
+        recent = get_recent_corrections(category, limit=10)
         corrections_applied = len(recent)
 
         MANUAL_HOURS_PER_PIECE = 7.5

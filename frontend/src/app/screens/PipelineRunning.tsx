@@ -37,6 +37,8 @@ export function PipelineRunning() {
   const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [contentCategory, setContentCategory] = useState('general');
   const logEndRef = useRef<HTMLDivElement>(null);
   const logIdCounter = useRef(1);
 
@@ -48,6 +50,14 @@ export function PipelineRunning() {
   const onAgentUpdate = useCallback((agentName: string, eventData: Record<string, unknown>) => {
     const agentId = AGENT_ID_MAP[agentName];
     if (!agentId) return;
+
+    // Extract content_category from intake_agent
+    if (agentName === 'intake_agent') {
+      const brief = eventData.brief as { content_category?: string } | undefined;
+      if (brief?.content_category) {
+        setContentCategory(brief.content_category);
+      }
+    }
 
     setAgents((prev) => prev.map((agent) => {
       if (agent.id === agentId) {
@@ -89,10 +99,11 @@ export function PipelineRunning() {
   }, []);
 
   const onHumanRequired = useCallback((id: string) => {
-    navigate('/approval/' + id);
-  }, [navigate]);
+    navigate('/approval/' + id, { state: { category: contentCategory } });
+  }, [navigate, contentCategory]);
 
   const onError = useCallback((message: string) => {
+    setPipelineError(message);
     setAgents((prev) => prev.map((a) =>
       a.status === 'pending' || a.status === 'running'
         ? { ...a, status: 'error' }
@@ -252,6 +263,18 @@ export function PipelineRunning() {
               </div>
             ))}
           </div>
+
+          {pipelineError && (
+            <div className="max-w-2xl mx-auto mt-6 p-4 bg-red-900/20 border border-red-700 rounded-md">
+              <p className="text-red-400 text-sm mb-3">{pipelineError}</p>
+              <button
+                onClick={() => navigate('/configure')}
+                className="px-4 py-2 bg-accent-primary text-white rounded-md text-sm"
+              >
+                Try again
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Right Column - Live Log */}

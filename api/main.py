@@ -144,14 +144,21 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
             "run_id": run_id,
             "brief": brief,
             "engagement_data": engagement_data,
+            # Extract top-level fields from brief dict
+            "session_id": str(brief.get("session_id", "") or ""),
+            "content_category": str(brief.get("content_category", "general") or "general"),
             "strategy": {},
             "trend_context": "",
+            "trend_sources": [],
+            "trend_cache_hit": False,
             "past_feedback": database.get_past_feedback(brief.get("topic", "")),
             "draft": "",
             "draft_version": 0,
             "compliance_verdict": "",
             "compliance_feedback": [],
             "compliance_iterations": 0,
+            "org_rules_count": 0,
+            "rules_source": "",
             "localized_hi": "",
             "blog_html": "",
             "twitter_thread": [],
@@ -159,6 +166,7 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
             "whatsapp_message": "",
             "human_approved": False,
             "escalation_required": False,
+            "diff_captured": False,
             "error_message": None,
             "pipeline_status": "running",
             "audit_log": [],
@@ -280,7 +288,14 @@ async def approve_pipeline(run_id: str, request: ApproveRequest) -> dict:
 
         pipeline = build_pipeline()
         config = {"configurable": {"thread_id": run_id}}
-        pipeline.invoke({"human_approved": True}, config)
+
+        # Update state with human_approved and resume from the interrupted node
+        # LangGraph requires update_state followed by invoke to resume
+        pipeline.update_state(config, {"human_approved": True})
+
+        # Resume the pipeline from the interrupt point
+        for _update in pipeline.stream(None, config, stream_mode="updates"):
+            pass  # run to completion synchronously
 
         queue = SSE_QUEUES.get(run_id)
         if queue is not None and APP_EVENT_LOOP is not None:

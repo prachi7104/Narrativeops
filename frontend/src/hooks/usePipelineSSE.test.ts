@@ -58,7 +58,7 @@ describe('usePipelineSSE', () => {
     const es = MockEventSource.instances[0];
     es.onmessage?.(
       {
-        data: JSON.stringify({ type: 'update', draft_agent: { pipeline_status: 'running' } }),
+        data: JSON.stringify({ type: 'update', data: { draft_agent: { pipeline_status: 'running' } } }),
       } as MessageEvent,
     );
 

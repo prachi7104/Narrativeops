@@ -134,6 +134,21 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   return (await response.json()) as DashboardSummary;
 }
 
+export type PipelineRun = {
+  id: string;
+  brief_topic: string;
+  status: string;
+  created_at: string;
+};
+
+export async function getRecentRuns(): Promise<PipelineRun[]> {
+  const endpoint = `${BASE_URL}/api/dashboard/summary`;
+  const response = await fetch(endpoint);
+  await assertOk(response, endpoint);
+  const data = (await response.json()) as { most_recent_runs: PipelineRun[] };
+  return data.most_recent_runs || [];
+}
+
 export async function submitFeedback(
   runId: string,
   rating: number,
