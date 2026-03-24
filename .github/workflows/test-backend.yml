@@ -30,9 +30,9 @@ jobs:
       - name: Run backend unit tests (no integration)
         working-directory: api
         env:
-          GROQ_API_KEY_HEAVY: ${{ secrets.GROQ_API_KEY_HEAVY }}
-          GROQ_API_KEY_LIGHT: ${{ secrets.GROQ_API_KEY_LIGHT }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GROQ_API_KEY_HEAVY: test-groq-heavy
+          GROQ_API_KEY_LIGHT: test-groq-light
+          GOOGLE_API_KEY: test-google-key
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: test-supabase-anon-key
         run: pytest tests/ -v -m "not integration"
