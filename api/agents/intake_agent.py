@@ -18,14 +18,24 @@ def run_intake_agent(state: ContentState) -> dict:
     """
     brief = state["brief"]
     engagement_data = state.get("engagement_data")
+    requested_output_format = str(state.get("output_format") or "multi_platform_pack")
+
+    format_hint_map = {
+        "et_op_ed": "et_op_ed",
+        "et_explainer_box": "et_explainer_box",
+        "multi_platform_pack": "multi_platform_pack",
+    }
+    enforced_format = format_hint_map.get(requested_output_format, "multi_platform_pack")
 
     # Build system prompt with exact JSON schema
     system_prompt = """You are a content strategist for Economic Times.
 Analyze the user's content brief and create a comprehensive content strategy.
 
+The editorial format is already chosen by the user. You MUST set "format" to "__ENFORCED_FORMAT__".
+
 Return ONLY a JSON object with this exact schema:
 {
-  "format": "article | listicle | explainer",
+    "format": "et_op_ed | et_explainer_box | multi_platform_pack",
   "tone": "authoritative | accessible | analytical",
   "word_count": <number between 400 and 800>,
   "key_messages": ["string"],
@@ -37,6 +47,7 @@ Return ONLY a JSON object with this exact schema:
 }
 
 Return ONLY the JSON object. No explanation, no markdown, no preamble."""
+    system_prompt = system_prompt.replace("__ENFORCED_FORMAT__", enforced_format)
 
     # Build user prompt
     user_prompt = f"Content Brief:\n{json.dumps(brief, indent=2)}\n\n"

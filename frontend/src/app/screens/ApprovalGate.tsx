@@ -11,10 +11,14 @@ import type {
   PipelineMetrics,
 } from '../api/types';
 
-type Channel = 'blog' | 'twitter' | 'linkedin' | 'whatsapp' | 'hindi';
+type Channel = 'blog' | 'op_ed' | 'explainer_box' | 'twitter' | 'linkedin' | 'whatsapp' | 'hindi';
+type OutputFormat = 'et_op_ed' | 'et_explainer_box' | 'multi_platform_pack';
+type OutputOption = 'et_op_ed' | 'et_explainer_box' | 'blog' | 'linkedin' | 'whatsapp' | 'twitter';
 
 interface ChannelContent {
   blog?: string;
+  op_ed?: string;
+  explainer_box?: string;
   twitter?: string;
   linkedin?: string;
   whatsapp?: string;
@@ -72,11 +76,57 @@ function mapOutputsToContent(outputs: PipelineOutput[]): ChannelContent {
 
   return {
     blog: blogRaw,
+    op_ed: outputs.find((o) => o.channel === 'op_ed')?.content || '',
+    explainer_box: outputs.find((o) => o.channel === 'explainer_box')?.content || '',
     twitter: twitterCombined,
     linkedin: outputs.find((o) => o.channel === 'linkedin')?.content || '',
     whatsapp: outputs.find((o) => o.channel === 'whatsapp')?.content || '',
     hindi: outputs.find((o) => o.language === 'hi')?.content || '',
   };
+}
+
+function parseFormatMetadata(events: AuditEvent[]): { format: OutputFormat; options: OutputOption[] } {
+  const event = [...events].reverse().find((item) => item.agent_name === 'format_agent');
+  if (!event?.output_summary) {
+    return {
+      format: 'multi_platform_pack',
+      options: ['blog', 'twitter', 'linkedin', 'whatsapp'],
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(event.output_summary) as {
+      selected_output_format?: string;
+      selected_output_options?: string[];
+    };
+    const format: OutputFormat =
+      parsed.selected_output_format === 'et_op_ed' ||
+      parsed.selected_output_format === 'et_explainer_box' ||
+      parsed.selected_output_format === 'multi_platform_pack'
+        ? parsed.selected_output_format
+        : 'multi_platform_pack';
+
+    const options = Array.isArray(parsed.selected_output_options)
+      ? parsed.selected_output_options.filter((item): item is OutputOption => (
+          item === 'et_op_ed' ||
+          item === 'et_explainer_box' ||
+          item === 'blog' ||
+          item === 'linkedin' ||
+          item === 'whatsapp' ||
+          item === 'twitter'
+        ))
+      : [];
+
+    return {
+      format,
+      options: options.length > 0 ? options : ['blog', 'twitter', 'linkedin', 'whatsapp'],
+    };
+  } catch {
+    return {
+      format: 'multi_platform_pack',
+      options: ['blog', 'twitter', 'linkedin', 'whatsapp'],
+    };
+  }
 }
 
 export function ApprovalGate() {
@@ -91,6 +141,7 @@ export function ApprovalGate() {
   const [originalContent, setOriginalContent] = useState<ChannelContent>({});
   const [metrics, setMetrics] = useState<PipelineMetrics | null>(null);
   const [complianceSummary, setComplianceSummary] = useState<ComplianceAuditSummary | null>(null);
+  const [outputOptions, setOutputOptions] = useState<OutputOption[]>(['blog', 'twitter', 'linkedin', 'whatsapp']);
   const [toast, setToast] = useState('');
   const [unsavedTabs, setUnsavedTabs] = useState<Set<Channel>>(new Set());
 
@@ -104,6 +155,24 @@ export function ApprovalGate() {
         setOriginalContent(mapped);
         setMetrics(loadedMetrics);
         setComplianceSummary(parseComplianceSummary(auditEvents));
+        const formatMeta = parseFormatMetadata(auditEvents);
+        setOutputOptions(formatMeta.options);
+
+        if (formatMeta.options.includes('et_op_ed')) {
+          setActiveTab('op_ed');
+        } else if (formatMeta.options.includes('et_explainer_box')) {
+          setActiveTab('explainer_box');
+        } else if (formatMeta.options.includes('blog')) {
+          setActiveTab('blog');
+        } else if (formatMeta.options.includes('twitter')) {
+          setActiveTab('twitter');
+        } else if (formatMeta.options.includes('linkedin')) {
+          setActiveTab('linkedin');
+        } else if (formatMeta.options.includes('whatsapp')) {
+          setActiveTab('whatsapp');
+        } else {
+          setActiveTab('hindi');
+        }
       })
       .catch((err) => console.error('Failed to load outputs:', err));
   }, [id]);
@@ -193,6 +262,10 @@ export function ApprovalGate() {
     switch (channel) {
       case 'blog':
         return FileText;
+      case 'op_ed':
+        return FileText;
+      case 'explainer_box':
+        return FileText;
       case 'twitter':
         return Twitter;
       case 'linkedin':
@@ -278,14 +351,21 @@ export function ApprovalGate() {
     }
 
     // Preview mode
-    if (activeTab === 'blog') {
+    if (activeTab === 'blog' || activeTab === 'op_ed' || activeTab === 'explainer_box') {
       const hasHtml = /<\/?[a-z][\s\S]*>/i.test(activeContent);
 
       if (!activeContent.trim()) {
+        const message =
+          activeTab === 'op_ed'
+            ? 'No ET op-ed content is available for this run yet.'
+            : activeTab === 'explainer_box'
+              ? 'No ET explainer box content is available for this run yet.'
+              : 'No blog content is available for this run yet.';
+
         return (
           <div className="bg-bg-surface border border-border-default p-6 rounded-lg">
             <p className="text-sm text-text-secondary">
-              No blog content is available for this run yet.
+              {message}
             </p>
           </div>
         );
@@ -331,13 +411,27 @@ export function ApprovalGate() {
     );
   };
 
-  const tabs: { id: Channel; label: string }[] = [
-    { id: 'blog', label: 'Blog' },
-    { id: 'twitter', label: 'Twitter' },
-    { id: 'linkedin', label: 'LinkedIn' },
-    { id: 'whatsapp', label: 'WhatsApp' },
-    { id: 'hindi', label: 'Hindi' },
-  ];
+  const tabs: { id: Channel; label: string }[] = [];
+
+  if (outputOptions.includes('et_op_ed')) {
+    tabs.push({ id: 'op_ed', label: 'ET Op-Ed' });
+  }
+  if (outputOptions.includes('et_explainer_box')) {
+    tabs.push({ id: 'explainer_box', label: 'ET Explainer Box' });
+  }
+  if (outputOptions.includes('blog')) {
+    tabs.push({ id: 'blog', label: 'Blog' });
+  }
+  if (outputOptions.includes('twitter')) {
+    tabs.push({ id: 'twitter', label: 'Twitter' });
+  }
+  if (outputOptions.includes('linkedin')) {
+    tabs.push({ id: 'linkedin', label: 'LinkedIn' });
+  }
+  if (outputOptions.includes('whatsapp')) {
+    tabs.push({ id: 'whatsapp', label: 'WhatsApp' });
+  }
+  tabs.push({ id: 'hindi', label: 'Hindi' });
 
   return (
     <div className="min-h-screen bg-bg-primary">
