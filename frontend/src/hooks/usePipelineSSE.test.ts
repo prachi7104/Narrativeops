@@ -48,7 +48,7 @@ describe('usePipelineSSE', () => {
     expect(MockEventSource.instances[0].url).toContain('/api/pipeline/run-42/stream');
   });
 
-  it('routes updates event to onUpdate', () => {
+  it('routes update event to onUpdate', () => {
     const onAgentUpdate = vi.fn();
     const onHumanRequired = vi.fn();
     const onError = vi.fn();
@@ -58,7 +58,7 @@ describe('usePipelineSSE', () => {
     const es = MockEventSource.instances[0];
     es.onmessage?.(
       {
-        data: JSON.stringify({ type: 'updates', draft_agent: { pipeline_status: 'running' } }),
+        data: JSON.stringify({ type: 'update', draft_agent: { pipeline_status: 'running' } }),
       } as MessageEvent,
     );
 
