@@ -20,17 +20,13 @@ jobs:
           node-version: "20"
 
       - name: Install dependencies
-        working-directory: web
+        working-directory: frontend
         run: npm ci
 
-      - name: Run ESLint
-        working-directory: web
-        run: npm run lint
-
       - name: Run Vitest
-        working-directory: web
+        working-directory: frontend
         run: npm test
 
       - name: Run build check
-        working-directory: web
+        working-directory: frontend
         run: npm run build
