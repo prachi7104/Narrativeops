@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Twitter, Linkedin, MessageCircle, FileText, ArrowRight } from 'lucide-react';
 
-import { getDashboardSummary } from '../api/client';
-import type { DashboardSummary } from '../api/types';
+import { getDashboardSummary, getStyleMemory } from '../api/client';
+import type { DashboardSummary, StyleMemoryResponse } from '../api/types';
 
 const CHANNEL_OPTIONS = [
   { id: 'blog', label: 'Blog', icon: FileText },
@@ -22,30 +22,6 @@ const TRENDING_TOPICS = [
   'EdTech Innovation',
 ];
 
-const RECENT_PIPELINES = [
-  {
-    id: 1,
-    brief: 'Exploring the impact of AI on modern healthcare systems and patient outcomes',
-    channels: ['blog', 'linkedin', 'twitter'],
-    compliance: 'PASS',
-    timestamp: '2 hours ago',
-  },
-  {
-    id: 2,
-    brief: 'Breaking down the latest developments in sustainable energy technology',
-    channels: ['blog', 'twitter'],
-    compliance: 'REVISE',
-    timestamp: '5 hours ago',
-  },
-  {
-    id: 3,
-    brief: 'How remote work is reshaping corporate culture and productivity',
-    channels: ['linkedin', 'whatsapp'],
-    compliance: 'PASS',
-    timestamp: '1 day ago',
-  },
-];
-
 const STATIC_TRENDING_TOPICS = [...TRENDING_TOPICS];
 
 export function Dashboard() {
@@ -54,9 +30,15 @@ export function Dashboard() {
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['blog']);
   const [language, setLanguage] = useState<'EN' | 'HI'>('EN');
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [styleMemory, setStyleMemory] = useState<StyleMemoryResponse | null>(null);
 
   useEffect(() => {
-    getDashboardSummary().then(setSummary).catch(console.error);
+    Promise.all([getDashboardSummary(), getStyleMemory(20)])
+      .then(([summaryData, memoryData]) => {
+        setSummary(summaryData);
+        setStyleMemory(memoryData);
+      })
+      .catch(console.error);
   }, []);
 
   const trendingTopics = useMemo(() => {
@@ -89,7 +71,7 @@ export function Dashboard() {
   };
 
   const handleRunPipeline = () => {
-    navigate('/configure');
+    navigate('/configure', { state: { prefillBrief: brief } });
   };
 
   const getChannelIcon = (channelId: string) => {
@@ -123,7 +105,7 @@ export function Dashboard() {
         <div className="text-text-primary font-semibold">NarrativeOps</div>
         <div className="flex items-center gap-3 md:gap-4">
           <button
-            onClick={() => navigate('/pipelines')}
+            onClick={() => navigate('/configure')}
             className="px-3 md:px-4 py-2 bg-accent-primary text-white rounded-md hover:bg-accent-primary/90 transition-colors text-sm md:text-base"
           >
             New pipeline
@@ -251,7 +233,7 @@ export function Dashboard() {
             {trendingTopics.map((topic) => (
               <button
                 key={topic}
-                onClick={() => setBrief(topic)}
+                onClick={() => navigate('/configure', { state: { prefillBrief: topic } })}
                 className="px-4 py-2 rounded-full bg-bg-surface text-text-secondary text-sm whitespace-nowrap hover:bg-bg-elevated hover:text-text-primary transition-colors"
               >
                 {topic}
@@ -310,42 +292,43 @@ export function Dashboard() {
                     </div>
                   </div>
                 ))
-              : RECENT_PIPELINES.map((pipeline) => (
-                  <div
-                    key={pipeline.id}
-                    onClick={() => navigate(`/approval/${pipeline.id}`)}
-                    className="bg-bg-surface border border-border-default rounded-[--radius-md] p-6 hover:border-accent-primary/40 cursor-pointer transition-colors"
-                  >
-                    <p className="text-text-primary mb-4 line-clamp-2 leading-relaxed">
-                      {pipeline.brief}
-                    </p>
+              : (
+                <div className="md:col-span-3 rounded-[--radius-md] border border-dashed border-border-default bg-bg-surface p-8 text-center text-sm text-text-secondary">
+                  No completed or pending runs yet. Start a new pipeline to populate your archive.
+                </div>
+                )}
+          </div>
 
-                    <div className="flex gap-2 mb-4">
-                      {pipeline.channels.map((channelId) => {
-                        const Icon = getChannelIcon(channelId);
-                        return (
-                          <div
-                            key={channelId}
-                            className="w-8 h-8 bg-bg-elevated rounded-md flex items-center justify-center"
-                          >
-                            <Icon className="w-4 h-4 text-text-secondary" />
-                          </div>
-                        );
-                      })}
+          <div className="mt-8 rounded-[--radius-md] border border-border-default bg-bg-surface p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg">Style memory</h3>
+              <span className="text-xs text-text-secondary">
+                {styleMemory?.total ?? 0} corrections captured
+              </span>
+            </div>
+            {!styleMemory || styleMemory.categories.length === 0 ? (
+              <p className="text-sm text-text-secondary">
+                No editorial corrections captured yet. Corrections from approvals will appear here.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {styleMemory.categories.map((category) => {
+                  const entries = styleMemory.by_category[category] || [];
+                  return (
+                    <div key={category} className="rounded-md border border-border-default bg-bg-primary p-4">
+                      <p className="text-sm font-medium text-text-primary">
+                        {category} content ({entries.length} corrections)
+                      </p>
+                      <ul className="mt-2 space-y-1 text-xs text-text-secondary">
+                        {entries.slice(0, 3).map((entry, idx) => (
+                          <li key={`${category}-${idx}`} className="line-clamp-1">• {entry}</li>
+                        ))}
+                      </ul>
                     </div>
-
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs border font-medium ${getComplianceBadgeStyle(
-                          pipeline.compliance
-                        )}`}
-                      >
-                        {pipeline.compliance}
-                      </span>
-                      <span className="text-xs text-text-tertiary">{pipeline.timestamp}</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </main>

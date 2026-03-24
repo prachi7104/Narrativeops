@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import {
   ArrowLeft,
   Twitter,
@@ -34,8 +34,10 @@ const AGENT_STEPS = [
 
 export function BriefConfiguration() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const prefillBrief = (location.state as { prefillBrief?: string } | null)?.prefillBrief || '';
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [brief, setBrief] = useState('');
+  const [brief, setBrief] = useState(prefillBrief);
   const [sessionId] = useState(() => crypto.randomUUID());
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);

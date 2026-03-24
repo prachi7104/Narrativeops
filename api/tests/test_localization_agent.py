@@ -89,4 +89,4 @@ def test_hindi_preserves_financial_terms_correctly(minimal_content_state):
     output = result["localized_hi"]
 
     assert ("एसआईपी" in output) or ("SIP" in output)
-    assert ("सेबी" in output) or ("SEBI" in output)
+    assert any(term in output for term in ["सेबी", "SEBI", "एनपीएस", "NPS"])

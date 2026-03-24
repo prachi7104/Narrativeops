@@ -26,6 +26,19 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.usefixtures("check_env_vars"))
 
 
+def pytest_configure() -> None:
+    """Patch compatibility shims needed by third-party libraries during tests."""
+    try:
+        import langchain  # type: ignore
+
+        # langchain_core still reads this legacy attribute in some versions.
+        if not hasattr(langchain, "debug"):
+            setattr(langchain, "debug", False)
+    except Exception:
+        # Never fail test startup for optional compatibility shims.
+        pass
+
+
 @pytest.fixture(scope="session")
 def check_env_vars():
     """Skip integration tests when required API credentials are not configured."""

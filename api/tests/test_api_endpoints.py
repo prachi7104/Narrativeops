@@ -205,3 +205,71 @@ async def test_patch_output_updates_content(mocker):
         language="en",
         content="Updated blog content here",
     )
+
+
+@pytest.mark.asyncio
+async def test_list_runs_endpoint(mocker):
+    mocker.patch(
+        "api.main.database.list_pipeline_runs",
+        return_value=[
+            {
+                "id": "run-1",
+                "brief_topic": "SIP basics",
+                "status": "completed",
+                "created_at": "2026-03-24T12:00:00Z",
+            }
+        ],
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/pipeline/runs?limit=10&status=completed")
+
+    assert response.status_code == 200
+    assert response.json()["runs"][0]["id"] == "run-1"
+
+
+@pytest.mark.asyncio
+async def test_settings_rules_endpoint_supabase_fallback(mocker):
+    mocker.patch("api.main.database.get_supabase_client", return_value=None)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/settings/rules")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["rules"] == []
+    assert data["source"] == "json_fallback"
+
+
+@pytest.mark.asyncio
+async def test_corrections_summary_endpoint(mocker):
+    mocker.patch(
+        "api.main.database.get_corrections_summary",
+        return_value={"summary": [{"category": "mutual_fund", "count": 2}], "total": 2},
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/settings/corrections-summary")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_memory_endpoint(mocker):
+    mocker.patch(
+        "api.main.database.get_style_memory",
+        return_value={
+            "by_category": {"general": ["Added source citation"]},
+            "total": 1,
+            "categories": ["general"],
+        },
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/memory?limit=5")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["categories"] == ["general"]

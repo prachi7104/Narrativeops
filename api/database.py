@@ -462,3 +462,131 @@ def get_pipeline_metrics(run_id: str) -> dict | None:
     except Exception as exc:
         logger.exception("Failed to get pipeline metrics for run_id=%s: %s", run_id, exc)
         return None
+
+
+def list_pipeline_runs(limit: int = 20, status: str | None = None) -> list[dict]:
+    """Return recent pipeline runs, optionally filtered by status, with attached metrics."""
+    client = get_supabase_client()
+    if client is None:
+        return []
+
+    try:
+        safe_limit = max(1, min(limit, 100))
+        query = (
+            client.table("pipeline_runs")
+            .select("id,brief_topic,status,created_at")
+            .order("created_at", desc=True)
+            .limit(safe_limit)
+        )
+
+        if status and status != "all":
+            query = query.eq("status", status)
+
+        runs_response = query.execute()
+        runs = list(runs_response.data or [])
+        if not runs:
+            return []
+
+        run_ids = [str(run.get("id") or "") for run in runs if run.get("id")]
+        metrics_by_run: dict[str, dict] = {}
+        if run_ids:
+            metrics_response = (
+                client.table("pipeline_metrics")
+                .select(
+                    "run_id,total_duration_ms,compliance_iterations,estimated_hours_saved,estimated_cost_saved_inr,trend_sources_used"
+                )
+                .in_("run_id", run_ids)
+                .execute()
+            )
+            for metric in metrics_response.data or []:
+                run_id = str(metric.get("run_id") or "")
+                if run_id:
+                    metrics_by_run[run_id] = metric
+
+        result: list[dict] = []
+        for run in runs:
+            run_id = str(run.get("id") or "")
+            merged = {**run, **metrics_by_run.get(run_id, {})}
+            result.append(merged)
+
+        return result
+    except Exception as exc:
+        logger.exception("Failed to list pipeline runs: %s", exc)
+        return []
+
+
+def get_default_org_rules() -> list[dict]:
+    """Return enabled default organization rules for settings visibility."""
+    client = get_supabase_client()
+    if client is None:
+        return []
+
+    try:
+        response = (
+            client.table("org_rules")
+            .select("rule_id,rule_text,category,severity,source")
+            .eq("session_id", "default")
+            .eq("enabled", True)
+            .order("rule_id")
+            .execute()
+        )
+        return list(response.data or [])
+    except Exception as exc:
+        logger.exception("Failed to get default org rules: %s", exc)
+        return []
+
+
+def get_corrections_summary() -> dict:
+    """Aggregate editorial correction counts by content category."""
+    client = get_supabase_client()
+    if client is None:
+        return {"summary": [], "total": 0}
+
+    try:
+        response = client.table("editorial_corrections").select("content_category").execute()
+        rows = response.data or []
+
+        counts: dict[str, int] = {}
+        for row in rows:
+            category = str(row.get("content_category") or "general")
+            counts[category] = counts.get(category, 0) + 1
+
+        summary = [{"category": key, "count": value} for key, value in sorted(counts.items())]
+        return {"summary": summary, "total": sum(counts.values())}
+    except Exception as exc:
+        logger.exception("Failed to get corrections summary: %s", exc)
+        return {"summary": [], "total": 0}
+
+
+def get_style_memory(limit: int = 20) -> dict:
+    """Return recent correction summaries grouped by category for style memory UI."""
+    client = get_supabase_client()
+    if client is None:
+        return {"by_category": {}, "total": 0, "categories": []}
+
+    try:
+        safe_limit = max(1, min(limit, 100))
+        response = (
+            client.table("editorial_corrections")
+            .select("content_category,diff_summary,channel,created_at")
+            .order("created_at", desc=True)
+            .limit(safe_limit)
+            .execute()
+        )
+        rows = response.data or []
+
+        by_category: dict[str, list[str]] = {}
+        for row in rows:
+            category = str(row.get("content_category") or "general")
+            diff_summary = str(row.get("diff_summary") or "").strip()
+            if not diff_summary:
+                continue
+            if category not in by_category:
+                by_category[category] = []
+            by_category[category].append(diff_summary)
+
+        categories = sorted(by_category.keys())
+        return {"by_category": by_category, "total": len(rows), "categories": categories}
+    except Exception as exc:
+        logger.exception("Failed to get style memory: %s", exc)
+        return {"by_category": {}, "total": 0, "categories": []}

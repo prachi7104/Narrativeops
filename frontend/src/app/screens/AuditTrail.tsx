@@ -24,7 +24,15 @@ interface AuditEntry {
 }
 
 function mapEventToRow(event: AuditEvent, index: number): AuditEntry {
-  const summary = event.output_summary || '';
+  let summary = event.output_summary || '';
+  if (event.agent_name === 'compliance_agent' && summary) {
+    try {
+      const parsed = JSON.parse(summary) as { summary?: string; verdict?: string };
+      summary = parsed.summary || parsed.verdict || summary;
+    } catch {
+      // Keep legacy plain-text summary as-is.
+    }
+  }
   const sourcesMatch = summary.match(/from\s+(\d+)\s+sources?/i);
   const sourceCount = sourcesMatch ? Number(sourcesMatch[1]) : undefined;
 

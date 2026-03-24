@@ -6,7 +6,25 @@ Tests all external connections (Groq heavy, Groq light, Google AI, Supabase)
 and prints PASS/FAIL for each without raising exceptions.
 """
 
+import os
 import sys
+
+import pytest
+
+__test__ = False
+
+_REQUIRED_CONNECTIVITY_ENV_VARS = [
+    "GROQ_API_KEY_HEAVY",
+    "GROQ_API_KEY_LIGHT",
+    "GOOGLE_API_KEY",
+    "SUPABASE_URL",
+    "SUPABASE_ANON_KEY",
+]
+
+pytestmark = pytest.mark.skipif(
+    any(not os.getenv(name) for name in _REQUIRED_CONNECTIVITY_ENV_VARS),
+    reason="Skipping connectivity checks because required credentials are not configured.",
+)
 
 
 def test_groq_heavy(api_key: str) -> tuple[bool, str]:

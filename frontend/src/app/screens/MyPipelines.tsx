@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { ArrowLeft, Search, Filter, Eye, RotateCw, Trash2, Twitter, Linkedin, MessageCircle, FileText } from 'lucide-react';
-import { getRecentRuns, type PipelineRun } from '../../api/client';
+import { listRuns } from '../../api/client';
+import type { RunSummary } from '../../api/types';
 
 type PipelineStatus = 'completed' | 'awaiting' | 'failed' | 'escalated';
 type ComplianceStatus = 'PASS' | 'REVISE' | 'FAIL';
@@ -14,6 +15,7 @@ interface DisplayPipeline {
   language: string;
   created: string;
   status: PipelineStatus;
+  rawStatus: RunSummary['status'];
 }
 
 export function MyPipelines() {
@@ -24,8 +26,8 @@ export function MyPipelines() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getRecentRuns()
-      .then((runs: PipelineRun[]) => {
+    listRuns(50)
+      .then((runs: RunSummary[]) => {
         // Map API data to display format
         const displayPipelines: DisplayPipeline[] = runs.map((run) => {
           // Map status to DisplayPipeline status
@@ -60,6 +62,7 @@ export function MyPipelines() {
             language: 'EN', // Default language
             created: createdDisplay,
             status: displayStatus,
+            rawStatus: run.status,
           };
         });
         setPipelines(displayPipelines);
@@ -126,6 +129,16 @@ export function MyPipelines() {
   const filteredPipelines = pipelines.filter((pipeline) =>
     pipeline.topic.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const getRouteForPipeline = (pipeline: DisplayPipeline) => {
+    if (pipeline.rawStatus === 'awaiting_approval') {
+      return `/approval/${pipeline.id}`;
+    }
+    if (pipeline.rawStatus === 'completed') {
+      return `/audit/${pipeline.id}`;
+    }
+    return `/audit/${pipeline.id}`;
+  };
 
   if (loading) {
     return (
@@ -220,9 +233,10 @@ export function MyPipelines() {
             {filteredPipelines.map((pipeline) => (
               <div
                 key={pipeline.id}
+                onClick={() => navigate(getRouteForPipeline(pipeline))}
                 onMouseEnter={() => setHoveredRow(pipeline.id)}
                 onMouseLeave={() => setHoveredRow(null)}
-                className="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-bg-elevated transition-colors"
+                className="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-bg-elevated transition-colors cursor-pointer"
               >
                 <div className="col-span-3 text-text-primary text-sm">{pipeline.topic}</div>
 
@@ -269,20 +283,27 @@ export function MyPipelines() {
                   {hoveredRow === pipeline.id && (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => navigate(`/approval/${pipeline.id}`)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          navigate(getRouteForPipeline(pipeline));
+                        }}
                         className="text-text-secondary hover:text-accent-primary transition-colors"
                         title="View"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => navigate('/configure')}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          navigate('/configure');
+                        }}
                         className="text-text-secondary hover:text-accent-primary transition-colors"
                         title="Re-run"
                       >
                         <RotateCw className="w-4 h-4" />
                       </button>
                       <button
+                        onClick={(event) => event.stopPropagation()}
                         className="text-text-secondary hover:text-error transition-colors"
                         title="Delete"
                       >

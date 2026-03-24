@@ -10,7 +10,7 @@ import threading
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
@@ -534,6 +534,44 @@ async def get_dashboard_summary() -> dict:
     except Exception as exc:
         logger.exception("Failed to fetch dashboard summary: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to fetch dashboard summary") from exc
+
+
+@app.get("/api/pipeline/runs")
+async def list_runs(
+    limit: int = Query(default=20, ge=1, le=100),
+    status: str = Query(default="all"),
+) -> dict:
+    runs = database.list_pipeline_runs(limit=limit, status=status)
+    return {"runs": runs}
+
+
+@app.get("/api/settings/rules")
+async def get_default_rules() -> dict:
+    client = database.get_supabase_client()
+    if client is None:
+        return {"rules": [], "count": 0, "source": "json_fallback"}
+
+    rules = database.get_default_org_rules()
+    return {"rules": rules, "count": len(rules), "source": "supabase"}
+
+
+@app.post("/api/settings/rules/reload")
+async def reload_default_rules() -> dict:
+    from api.data.seed_default_rules import seed_default_rules
+
+    seed_default_rules(force=True)
+    rules = database.get_default_org_rules()
+    return {"status": "reloaded", "count": len(rules), "source": "supabase"}
+
+
+@app.get("/api/settings/corrections-summary")
+async def get_corrections_summary() -> dict:
+    return database.get_corrections_summary()
+
+
+@app.get("/api/memory")
+async def get_style_memory(limit: int = Query(default=20, ge=1, le=100)) -> dict:
+    return database.get_style_memory(limit=limit)
 
 
 @app.get("/api/pipeline/{run_id}/audit")

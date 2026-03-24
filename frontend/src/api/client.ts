@@ -2,10 +2,15 @@ export const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 import type {
   AuditEvent,
+  CorrectionsSummaryResponse,
   DashboardSummary,
   DiffResponse,
   PipelineMetrics,
   PipelineOutput,
+  PipelineRun,
+  RunSummary,
+  SettingsRulesResponse,
+  StyleMemoryResponse,
   UploadGuideResponse,
 } from "./types";
 
@@ -134,19 +139,55 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   return (await response.json()) as DashboardSummary;
 }
 
-export type PipelineRun = {
-  id: string;
-  brief_topic: string;
-  status: string;
-  created_at: string;
-};
-
 export async function getRecentRuns(): Promise<PipelineRun[]> {
   const endpoint = `${BASE_URL}/api/dashboard/summary`;
   const response = await fetch(endpoint);
   await assertOk(response, endpoint);
   const data = (await response.json()) as { most_recent_runs: PipelineRun[] };
   return data.most_recent_runs || [];
+}
+
+export async function listRuns(limit = 20, status = "all"): Promise<RunSummary[]> {
+  const endpoint = `${BASE_URL}/api/pipeline/runs?limit=${limit}&status=${encodeURIComponent(status)}`;
+  const response = await fetch(endpoint);
+  await assertOk(response, endpoint);
+  const data = (await response.json()) as { runs: RunSummary[] };
+  return data.runs || [];
+}
+
+export async function getSettingsRules(): Promise<SettingsRulesResponse> {
+  const endpoint = `${BASE_URL}/api/settings/rules`;
+  const response = await fetch(endpoint);
+  await assertOk(response, endpoint);
+  return (await response.json()) as SettingsRulesResponse;
+}
+
+export async function reloadSettingsRules(): Promise<{ status: string; count: number; source: string }> {
+  const endpoint = `${BASE_URL}/api/settings/rules/reload`;
+  const response = await fetch(endpoint, { method: "POST" });
+  await assertOk(response, endpoint);
+  return (await response.json()) as { status: string; count: number; source: string };
+}
+
+export async function getCorrectionsSummary(): Promise<CorrectionsSummaryResponse> {
+  const endpoint = `${BASE_URL}/api/settings/corrections-summary`;
+  const response = await fetch(endpoint);
+  await assertOk(response, endpoint);
+  return (await response.json()) as CorrectionsSummaryResponse;
+}
+
+export async function getStyleMemory(limit = 20): Promise<StyleMemoryResponse> {
+  const endpoint = `${BASE_URL}/api/memory?limit=${limit}`;
+  const response = await fetch(endpoint);
+  await assertOk(response, endpoint);
+  return (await response.json()) as StyleMemoryResponse;
+}
+
+export async function getHealth(): Promise<{ status: string; version: string }> {
+  const endpoint = `${BASE_URL}/health`;
+  const response = await fetch(endpoint);
+  await assertOk(response, endpoint);
+  return (await response.json()) as { status: string; version: string };
 }
 
 export async function submitFeedback(

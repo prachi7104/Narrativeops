@@ -36,6 +36,22 @@ export interface AuditEvent {
   created_at: string;
 }
 
+export interface ComplianceAnnotation {
+  section?: string;
+  sentence?: string;
+  rule_id?: string;
+  severity?: string;
+  message?: string;
+  suggested_fix?: string;
+}
+
+export interface ComplianceAuditSummary {
+  format?: string;
+  verdict?: string;
+  summary?: string;
+  annotations?: ComplianceAnnotation[];
+}
+
 export interface PipelineRun {
   id: string;
   brief_topic: string;
@@ -64,4 +80,46 @@ export interface UploadGuideResponse {
   rules_extracted: number;
   preview: OrgRule[];
   error: string | null;
+}
+
+export interface RunSummary {
+  id: string;
+  brief_topic: string;
+  status: "running" | "awaiting_approval" | "completed" | "failed" | "escalated";
+  created_at: string;
+  total_duration_ms?: number;
+  compliance_iterations?: number;
+  estimated_hours_saved?: number;
+  estimated_cost_saved_inr?: number;
+  trend_sources_used?: number;
+}
+
+export interface SettingsRule {
+  rule_id: string;
+  rule_text: string;
+  category: string;
+  severity: "error" | "warning";
+  source: string;
+}
+
+export interface SettingsRulesResponse {
+  rules: SettingsRule[];
+  count: number;
+  source: string;
+}
+
+export interface CorrectionsSummaryItem {
+  category: string;
+  count: number;
+}
+
+export interface CorrectionsSummaryResponse {
+  summary: CorrectionsSummaryItem[];
+  total: number;
+}
+
+export interface StyleMemoryResponse {
+  by_category: Record<string, string[]>;
+  total: number;
+  categories: string[];
 }

@@ -4,14 +4,14 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { MyPipelines } from './MyPipelines';
-import * as client from '../api/client';
+import * as client from '../../api/client';
 
 // Mock the API client
-vi.mock('../api/client', () => ({
-  getRecentRuns: vi.fn(),
+vi.mock('../../api/client', () => ({
+  listRuns: vi.fn(),
 }));
 
 // Mock useNavigate
@@ -45,7 +45,7 @@ describe('MyPipelines - B9 API Integration', () => {
       },
     ];
 
-    vi.mocked(client.getRecentRuns).mockResolvedValue(mockRuns);
+    vi.mocked(client.listRuns).mockResolvedValue(mockRuns as any);
 
     render(
       <MemoryRouter>
@@ -55,7 +55,7 @@ describe('MyPipelines - B9 API Integration', () => {
 
     // Should call API on mount
     await waitFor(() => {
-      expect(client.getRecentRuns).toHaveBeenCalledTimes(1);
+      expect(client.listRuns).toHaveBeenCalledTimes(1);
     });
 
     // Should display real data from API
@@ -66,7 +66,7 @@ describe('MyPipelines - B9 API Integration', () => {
   });
 
   it('shows loading state while fetching', () => {
-    vi.mocked(client.getRecentRuns).mockImplementation(
+    vi.mocked(client.listRuns).mockImplementation(
       () => new Promise((resolve) => setTimeout(resolve, 1000)),
     );
 
@@ -80,7 +80,7 @@ describe('MyPipelines - B9 API Integration', () => {
   });
 
   it('shows empty state when no pipelines exist', async () => {
-    vi.mocked(client.getRecentRuns).mockResolvedValue([]);
+    vi.mocked(client.listRuns).mockResolvedValue([] as any);
 
     render(
       <MemoryRouter>
@@ -98,7 +98,7 @@ describe('MyPipelines - B9 API Integration', () => {
 
   it('handles API errors gracefully', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.mocked(client.getRecentRuns).mockRejectedValue(new Error('Network error'));
+    vi.mocked(client.listRuns).mockRejectedValue(new Error('Network error'));
 
     render(
       <MemoryRouter>
@@ -142,7 +142,7 @@ describe('MyPipelines - B9 API Integration', () => {
       },
     ];
 
-    vi.mocked(client.getRecentRuns).mockResolvedValue(mockRuns);
+    vi.mocked(client.listRuns).mockResolvedValue(mockRuns as any);
 
     render(
       <MemoryRouter>
@@ -184,7 +184,7 @@ describe('MyPipelines - B9 API Integration', () => {
       },
     ];
 
-    vi.mocked(client.getRecentRuns).mockResolvedValue(mockRuns);
+    vi.mocked(client.listRuns).mockResolvedValue(mockRuns as any);
 
     render(
       <MemoryRouter>
@@ -216,7 +216,7 @@ describe('MyPipelines - B9 API Integration', () => {
       },
     ];
 
-    vi.mocked(client.getRecentRuns).mockResolvedValue(mockRuns);
+    vi.mocked(client.listRuns).mockResolvedValue(mockRuns as any);
 
     render(
       <MemoryRouter>
@@ -231,7 +231,7 @@ describe('MyPipelines - B9 API Integration', () => {
   });
 
   it('only calls API once on mount (no unnecessary refetches)', async () => {
-    vi.mocked(client.getRecentRuns).mockResolvedValue([]);
+    vi.mocked(client.listRuns).mockResolvedValue([] as any);
 
     const { rerender } = render(
       <MemoryRouter>
@@ -240,7 +240,7 @@ describe('MyPipelines - B9 API Integration', () => {
     );
 
     await waitFor(() => {
-      expect(client.getRecentRuns).toHaveBeenCalledTimes(1);
+      expect(client.listRuns).toHaveBeenCalledTimes(1);
     });
 
     // Rerender shouldn't trigger another call
@@ -251,6 +251,32 @@ describe('MyPipelines - B9 API Integration', () => {
     );
 
     // Still only 1 call (useEffect dependency array is empty [])
-    expect(client.getRecentRuns).toHaveBeenCalledTimes(1);
+    expect(client.listRuns).toHaveBeenCalledTimes(1);
+
+  });
+
+  it('navigates to audit for completed runs when row is clicked', async () => {
+    const mockRuns = [
+      {
+        id: 'completed-run-1',
+        brief_topic: 'Completed item',
+        status: 'completed',
+        created_at: new Date().toISOString(),
+      },
+    ];
+    vi.mocked(client.listRuns).mockResolvedValue(mockRuns as any);
+
+    render(
+      <MemoryRouter>
+        <MyPipelines />
+      </MemoryRouter>,
+    );
+
+    const rowText = await screen.findByText('Completed item');
+    fireEvent.click(rowText);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/audit/completed-run-1');
+    });
   });
 });

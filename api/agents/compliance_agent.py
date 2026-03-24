@@ -183,7 +183,14 @@ DRAFT:
         "violations": len(annotations),
         "rules_source": rules_source,
         "rules_checked": len(combined_rules),
-        "output_summary": summary[:100] if summary else "No violations found"
+        "output_summary": json.dumps(
+            {
+                "format": "compliance_v1",
+                "verdict": verdict,
+                "summary": summary[:400] if summary else "No violations found",
+                "annotations": annotations[:5],
+            }
+        ),
     }
 
     return {
