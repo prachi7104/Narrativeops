@@ -65,7 +65,7 @@ export function usePipelineSSE(
         return;
       }
 
-      if (event.type === "updates") {
+      if (event.type === "update") {
         const reserved = new Set(["type", "run_id", "message"]);
         for (const [key, value] of Object.entries(event)) {
           if (reserved.has(key)) {

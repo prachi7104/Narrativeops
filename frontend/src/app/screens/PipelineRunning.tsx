@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { StopCircle } from 'lucide-react';
 
 import { usePipelineSSE, AGENT_ID_MAP } from '../../hooks/usePipelineSSE';
@@ -32,7 +32,7 @@ const INITIAL_AGENTS: Agent[] = [
 ];
 
 export function PipelineRunning() {
-  const { runId } = useParams<{ runId: string }>();
+  const { id: runId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
   const [logs, setLogs] = useState<LogEntry[]>([]);

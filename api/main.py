@@ -26,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from api import database  # noqa: E402
 from api.agents.rule_extractor_agent import extract_rules_from_pdf  # noqa: E402
+from api.config import settings  # noqa: E402
 from api.graph.state import ContentState  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,13 @@ app = FastAPI(title="NarrativeOps API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://narrativeops.vercel.app"],
+    allow_origins=[
+        settings.FRONTEND_URL,
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )

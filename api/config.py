@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = Field(..., min_length=1)
     SUPABASE_URL: str = Field(..., min_length=1)
     SUPABASE_ANON_KEY: str = Field(..., min_length=1)
+    FRONTEND_URL: str = Field(default="https://narrativeops.vercel.app")
     TAVILY_API_KEY: str | None = None
 
     @validator(

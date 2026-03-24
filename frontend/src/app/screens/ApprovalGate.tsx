@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router';
 import { Twitter, Linkedin, MessageCircle, FileText, Edit3, Check, X, ArrowLeft } from 'lucide-react';
 
 import { getOutputs, getMetrics, captureDiff, approvePipeline } from '../api/client';
