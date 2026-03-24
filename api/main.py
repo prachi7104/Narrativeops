@@ -24,9 +24,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from api import database
-from api.agents.rule_extractor_agent import extract_rules_from_pdf
-from api.graph.state import ContentState
+from api import database  # noqa: E402
+from api.agents.rule_extractor_agent import extract_rules_from_pdf  # noqa: E402
+from api.graph.state import ContentState  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

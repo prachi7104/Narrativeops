@@ -15,7 +15,7 @@ UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
 
 class _DiffQuery:
-    def __init__(self, client: "_DiffClient", table_name: str):
+    def __init__(self, client: _DiffClient, table_name: str):
         self.client = client
         self.table_name = table_name
         self._select_columns = ""
