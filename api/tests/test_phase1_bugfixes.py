@@ -46,8 +46,6 @@ def test_b1_b3_initial_state_has_all_required_fields(minimal_content_state):
 
 def test_b1_b3_session_id_extracted_from_brief():
     """Verify session_id is extracted from brief dict to top-level state."""
-    from api.main import _run_pipeline_thread
-
     # Mock the brief with session_id
     brief = {
         "topic": "Test",
@@ -296,8 +294,6 @@ def test_full_pipeline_state_schema_valid(minimal_content_state):
     assert graph is not None
 
     # Verify all state keys match ContentState TypedDict
-    from api.graph.state import ContentState
-
     # ContentState should accept this state structure
     typed_state: ContentState = state
     assert typed_state is not None

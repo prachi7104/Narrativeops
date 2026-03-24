@@ -33,7 +33,7 @@ def pytest_configure() -> None:
 
         # langchain_core still reads this legacy attribute in some versions.
         if not hasattr(langchain, "debug"):
-            setattr(langchain, "debug", False)
+            langchain.debug = False
     except Exception:
         # Never fail test startup for optional compatibility shims.
         pass
