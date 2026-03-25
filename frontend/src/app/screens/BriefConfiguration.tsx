@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import {
   ArrowLeft,
@@ -6,58 +6,71 @@ import {
   Linkedin,
   MessageCircle,
   FileText,
+  Newspaper,
   ChevronDown,
   ChevronUp,
   Loader2,
   CircleCheck,
   TriangleAlert,
+  CheckCircle2,
 } from 'lucide-react';
 
 import { startPipeline, uploadBrandGuide } from '../../api/client';
 
-const CHANNELS = [
-  { id: 'blog', label: 'Blog', icon: FileText },
-  { id: 'twitter', label: 'Twitter', icon: Twitter },
-  { id: 'linkedin', label: 'LinkedIn', icon: Linkedin },
-  { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
-];
-
 const TONES = ['Authoritative', 'Accessible', 'Analytical', 'Urgent'];
 
-const OUTPUT_FORMATS = [
-  {
-    id: 'et_op_ed',
-    label: 'ET Op-Ed',
-    description: 'Sharp thesis, evidence-led argument, 700-900 words.',
-  },
-  {
-    id: 'et_explainer_box',
-    label: 'ET Explainer Box (Q&A)',
-    description: 'Question-answer structure with concise data pointers.',
-  },
+const PUBLISH_OPTIONS = [
   {
     id: 'blog',
     label: 'Blog',
+    icon: FileText,
     description: 'Long-form blog output view.',
+  },
+  {
+    id: 'faq',
+    label: 'FAQ',
+    icon: FileText,
+    description: 'Customer-facing Q&A set for support and distribution.',
+  },
+  {
+    id: 'publisher_brief',
+    label: 'Publisher Brief',
+    icon: Newspaper,
+    description: 'Editorial launch notes with SEO and distribution guidance.',
+  },
+  {
+    id: 'twitter',
+    label: 'Twitter',
+    icon: Twitter,
+    description: 'Thread-ready X/Twitter output.',
   },
   {
     id: 'linkedin',
     label: 'LinkedIn',
+    icon: Linkedin,
     description: 'Professional social post output.',
   },
   {
     id: 'whatsapp',
     label: 'WhatsApp',
+    icon: MessageCircle,
     description: 'Compact WhatsApp summary output.',
   },
   {
-    id: 'twitter',
-    label: 'Twitter',
-    description: 'Thread-ready X/Twitter output.',
+    id: 'et_op_ed',
+    label: 'ET Op-Ed',
+    icon: FileText,
+    description: 'Sharp thesis, evidence-led argument, 700-900 words.',
+  },
+  {
+    id: 'et_explainer_box',
+    label: 'ET Explainer Box (Q&A)',
+    icon: FileText,
+    description: 'Question-answer structure with concise data pointers.',
   },
 ] as const;
 
-type OutputOption = (typeof OUTPUT_FORMATS)[number]['id'];
+type OutputOption = (typeof PUBLISH_OPTIONS)[number]['id'];
 
 const AGENT_STEPS = [
   'Intake Analysis',
@@ -80,15 +93,9 @@ export function BriefConfiguration() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
-  const [selectedChannels, setSelectedChannels] = useState<string[]>(['blog', 'twitter']);
+  const [selectedChannels, setSelectedChannels] = useState<OutputOption[]>(['blog', 'twitter']);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['english']);
   const [selectedTone, setSelectedTone] = useState('Accessible');
-  const [selectedOutputOptions, setSelectedOutputOptions] = useState<OutputOption[]>([
-    'blog',
-    'linkedin',
-    'whatsapp',
-    'twitter',
-  ]);
   const [engagementExpanded, setEngagementExpanded] = useState(false);
   const [engagementData, setEngagementData] = useState('{\n  "scenario": 3,\n  "metrics": {\n    "engagement_rate": 0.45\n  }\n}');
 
@@ -102,6 +109,27 @@ export function BriefConfiguration() {
     }
     return 'general';
   };
+
+  // Smart defaults: auto-select tone and channels based on detected category
+  useEffect(() => {
+    if (!brief.trim()) return;
+    
+    const category = detectCategory(brief);
+    let suggestedTone = 'Accessible';
+    let suggestedChannels: OutputOption[] = ['blog', 'twitter'];
+
+    if (category === 'mutual_fund') {
+      suggestedTone = 'Analytical';
+      suggestedChannels = ['blog', 'linkedin', 'twitter'];
+    } else if (category === 'fintech') {
+      suggestedTone = 'Authoritative';
+      suggestedChannels = ['blog', 'twitter', 'linkedin'];
+    }
+
+    // Auto-apply suggestions only if user hasn't explicitly changed them
+    setSelectedTone(suggestedTone);
+    setSelectedChannels(suggestedChannels);
+  }, [brief]);
 
   const processSelectedFile = async (file: File) => {
     setPdfFile(file);
@@ -122,9 +150,11 @@ export function BriefConfiguration() {
     }
   };
 
-  const toggleChannel = (id: string) => {
+  const toggleChannel = (id: OutputOption) => {
     setSelectedChannels((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+      prev.includes(id)
+        ? (prev.length === 1 ? prev : prev.filter((c) => c !== id))
+        : [...prev, id]
     );
   };
 
@@ -149,22 +179,23 @@ export function BriefConfiguration() {
     setRunError(null);
 
     try {
-      const hasLongForm = selectedOutputOptions.includes('et_op_ed') || selectedOutputOptions.includes('et_explainer_box');
-      const outputOptionsToSend = hasLongForm
-        ? selectedOutputOptions
-        : ['blog', ...selectedOutputOptions.filter((item) => item !== 'blog')];
+      const contentCategory = detectCategory(brief);
+      const targetLanguages: string[] = ['en'];
+      if (selectedLanguages.includes('hindi')) targetLanguages.push('hi');
 
       const result = await startPipeline(
         {
           topic: brief.slice(0, 100),
           description: brief,
-          content_category: detectCategory(brief),
-          output_options: outputOptionsToSend,
+          content_category: contentCategory,
+          output_options: selectedChannels,
+          tone: selectedTone.toLowerCase(),
+          target_languages: targetLanguages,
         },
         sessionId,
         parsedEngagementData || null,
       );
-      navigate('/pipeline/' + result.run_id);
+      navigate('/pipeline/' + result.run_id, { state: { category: contentCategory } });
     } catch {
       setRunError('Failed to start pipeline. Please try again.');
     } finally {
@@ -184,7 +215,7 @@ export function BriefConfiguration() {
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="text-text-primary font-semibold">NarrativeOps</div>
+          <div className="text-text-primary font-semibold">Lumina</div>
         </div>
 
         {/* Scrollable Content */}
@@ -277,7 +308,7 @@ export function BriefConfiguration() {
               Publish to
             </label>
             <div className="grid grid-cols-2 gap-3">
-              {CHANNELS.map((channel) => {
+              {PUBLISH_OPTIONS.map((channel) => {
                 const Icon = channel.icon;
                 const isSelected = selectedChannels.includes(channel.id);
                 return (
@@ -292,9 +323,14 @@ export function BriefConfiguration() {
                   >
                     <div className="flex items-center gap-3">
                       <Icon className={`w-6 h-6 ${isSelected ? 'text-accent-primary' : 'text-text-secondary'}`} />
-                      <span className={`text-sm ${isSelected ? 'text-text-primary' : 'text-text-secondary'}`}>
-                        {channel.label}
-                      </span>
+                      <div className="text-left">
+                        <div className={`text-sm ${isSelected ? 'text-text-primary' : 'text-text-secondary'}`}>
+                          {channel.label}
+                        </div>
+                        <div className="text-[11px] text-text-tertiary hidden md:block">
+                          {channel.description}
+                        </div>
+                      </div>
                     </div>
                     <div
                       className={`w-10 h-6 rounded-full transition-colors ${
@@ -311,6 +347,9 @@ export function BriefConfiguration() {
                 );
               })}
             </div>
+            <p className="mt-2 text-xs text-text-tertiary">
+              Select one or more outputs. This controls generated output tabs.
+            </p>
           </div>
 
           {/* Section 3 - Languages */}
@@ -364,46 +403,7 @@ export function BriefConfiguration() {
             </div>
           </div>
 
-          {/* Section 5 - Output options */}
-          <div>
-            <label className="block text-text-primary mb-3 text-sm font-medium">
-              Output options
-            </label>
-            <div className="space-y-3">
-              {OUTPUT_FORMATS.map((item) => {
-                const isSelected = selectedOutputOptions.includes(item.id);
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setSelectedOutputOptions((prev) => {
-                        if (prev.includes(item.id)) {
-                          if (prev.length === 1) return prev;
-                          return prev.filter((option) => option !== item.id);
-                        }
-                        return [...prev, item.id];
-                      });
-                    }}
-                    className={`w-full text-left rounded-md border p-4 transition-colors ${
-                      isSelected
-                        ? 'border-accent-primary bg-accent-primary/10'
-                        : 'border-border-default bg-bg-surface hover:border-text-secondary'
-                    }`}
-                  >
-                    <p className={`text-sm font-medium ${isSelected ? 'text-text-primary' : 'text-text-secondary'}`}>
-                      {item.label}
-                    </p>
-                    <p className="mt-1 text-xs text-text-tertiary">{item.description}</p>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-2 text-xs text-text-tertiary">
-              Pick one or more. Selected outputs will appear as separate tabs in Review.
-            </p>
-          </div>
-
-          {/* Section 6 - Engagement Data (Collapsible) */}
+          {/* Section 5 - Engagement Data (Collapsible) */}
           <div>
             <button
               onClick={() => setEngagementExpanded(!engagementExpanded)}
@@ -432,11 +432,46 @@ export function BriefConfiguration() {
         </div>
 
         {/* Sticky Bottom CTA */}
-        <div className="border-t border-border-default p-6">
+        <div className="border-t border-border-default p-6 space-y-4">
+          {/* Pipeline Breadcrumbs */}
+          <div className="mb-4">
+            <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-widest mb-3">
+              Your pipeline
+            </h3>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              {[
+                { label: 'Intake', ready: !!brief.trim() },
+                { label: 'Trend', ready: !!brief.trim() },
+                { label: 'Compliance', ready: rulesExtracted !== null || !pdfFile },
+                { label: 'Format', ready: selectedChannels.length > 0 },
+                { label: 'Finalize', ready: !!selectedTone },
+              ].map((step, index) => (
+                <div key={step.label} className="flex items-center gap-1 flex-1">
+                  <div
+                    className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-medium ${
+                      step.ready
+                        ? 'bg-success text-white'
+                        : 'bg-bg-surface border border-border-default text-text-secondary'
+                    }`}
+                  >
+                    {step.ready ? <CheckCircle2 className="w-3 h-3" /> : index + 1}
+                  </div>
+                  {index < 4 && (
+                    <div
+                      className={`flex-1 h-0.5 mx-0.5 ${
+                        step.ready ? 'bg-success' : 'bg-border-default'
+                      }`}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
           <button
             onClick={handleRunPipeline}
             disabled={isRunning}
-            className="w-full px-6 py-3 bg-accent-primary text-white rounded-md hover:bg-accent-primary/90 transition-colors font-medium"
+            className="w-full px-6 py-3 bg-gradient-to-r from-accent-primary to-accent-secondary text-white rounded-md hover:shadow-lg transition-all font-medium disabled:opacity-60"
           >
             {isRunning ? (
               <span className="inline-flex items-center gap-2">
@@ -444,10 +479,10 @@ export function BriefConfiguration() {
                 Running pipeline...
               </span>
             ) : (
-              'Run NarrativeOps pipeline'
+              'Run Lumina pipeline'
             )}
           </button>
-          {runError && <p className="mt-3 text-sm text-amber-500">{runError}</p>}
+          {runError && <p className="mt-2 text-sm text-amber-500">{runError}</p>}
         </div>
       </div>
 
@@ -474,7 +509,7 @@ export function BriefConfiguration() {
           {/* Channel Output Placeholders */}
           <div className="space-y-3">
             {selectedChannels.map((channelId) => {
-              const channel = CHANNELS.find((c) => c.id === channelId);
+              const channel = PUBLISH_OPTIONS.find((c) => c.id === channelId);
               if (!channel) return null;
               const Icon = channel.icon;
               return (

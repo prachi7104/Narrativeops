@@ -5,8 +5,13 @@ This module builds the multi-agent content generation pipeline with:
 - Sequential processing through intake -> draft -> compliance -> localization -> format
 - Conditional routing after compliance (pass/revise/escalate)
 - Human approval checkpoint after formatting
-- Memory checkpointing for state persistence
+- Durable checkpointing for state persistence across process restarts
 """
+
+import logging
+import os
+import threading
+from pathlib import Path
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
@@ -20,6 +25,29 @@ from api.agents.localization_agent import run_localization_agent
 from api.agents.trend_agent import run_trend_agent
 from api.graph.routing import route_after_compliance
 from api.graph.state import ContentState
+
+logger = logging.getLogger(__name__)
+
+_PIPELINE = None
+_PIPELINE_LOCK = threading.Lock()
+
+
+def _build_checkpointer():
+    checkpoint_path = Path(
+        os.getenv("LANGGRAPH_CHECKPOINT_DB", "api/.cache/langgraph-checkpoints.sqlite")
+    )
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from langgraph.checkpoint.sqlite import SqliteSaver
+
+        return SqliteSaver.from_conn_string(str(checkpoint_path))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "SQLite checkpointer unavailable, falling back to MemorySaver: %s",
+            exc,
+        )
+        return MemorySaver()
 
 
 def human_escalation(state: ContentState) -> dict:
@@ -93,13 +121,26 @@ def build_pipeline():
     graph.add_edge("human_escalation", END)
 
     # Compile with checkpointer and interrupt for human approval after outputs are generated
-    checkpointer = MemorySaver()
+    checkpointer = _build_checkpointer()
     compiled_graph = graph.compile(
         checkpointer=checkpointer,
         interrupt_after=["format_agent"]
     )
 
     return compiled_graph
+
+
+def get_pipeline():
+    global _PIPELINE
+
+    if _PIPELINE is not None:
+        return _PIPELINE
+
+    with _PIPELINE_LOCK:
+        if _PIPELINE is None:
+            _PIPELINE = build_pipeline()
+
+    return _PIPELINE
 
 
 if __name__ == "__main__":

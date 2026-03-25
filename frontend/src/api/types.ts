@@ -1,5 +1,14 @@
 export interface PipelineOutput {
-  channel: "blog" | "op_ed" | "explainer_box" | "twitter" | "linkedin" | "whatsapp" | "article";
+  channel:
+    | "blog"
+    | "faq"
+    | "publisher_brief"
+    | "op_ed"
+    | "explainer_box"
+    | "twitter"
+    | "linkedin"
+    | "whatsapp"
+    | "article";
   language: "en" | "hi";
   content: string;
   approved: boolean;
@@ -92,6 +101,9 @@ export interface RunSummary {
   estimated_hours_saved?: number;
   estimated_cost_saved_inr?: number;
   trend_sources_used?: number;
+  output_options?: string[];
+  compliance_verdict?: string;
+  has_hindi?: boolean;
 }
 
 export interface SettingsRule {

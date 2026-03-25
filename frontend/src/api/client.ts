@@ -24,8 +24,12 @@ async function assertOk(response: Response, endpoint: string): Promise<void> {
   );
 }
 
+function isNotFound(response: Response): boolean {
+  return response.status === 404;
+}
+
 export async function startPipeline(
-  brief: { topic: string; description: string; content_category?: string },
+  brief: { topic: string; description: string; content_category?: string; output_options?: string[]; tone?: string; target_languages?: string[] },
   sessionId?: string,
   engagementData?: Record<string, unknown> | null,
 ): Promise<{ run_id: string; status: string }> {
@@ -78,6 +82,18 @@ export async function approvePipeline(runId: string): Promise<{ status: string }
   return (await response.json()) as { status: string };
 }
 
+export async function rejectPipeline(runId: string): Promise<{ status: string }> {
+  const endpoint = `${BASE_URL}/api/pipeline/${runId}/approve`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ approved: false }),
+  });
+
+  await assertOk(response, endpoint);
+  return (await response.json()) as { status: string };
+}
+
 export async function getOutputs(runId: string): Promise<PipelineOutput[]> {
   const endpoint = `${BASE_URL}/api/pipeline/${runId}/outputs`;
   const response = await fetch(endpoint);
@@ -90,6 +106,7 @@ export async function getOutputs(runId: string): Promise<PipelineOutput[]> {
 export async function captureDiff(
   runId: string,
   channel: string,
+  language: string,
   originalText: string,
   correctedText: string,
   category: string,
@@ -100,6 +117,7 @@ export async function captureDiff(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       channel,
+      language,
       original_text: originalText,
       corrected_text: correctedText,
       content_category: category,
@@ -150,6 +168,23 @@ export async function getRecentRuns(): Promise<PipelineRun[]> {
 export async function listRuns(limit = 20, status = "all"): Promise<RunSummary[]> {
   const endpoint = `${BASE_URL}/api/pipeline/runs?limit=${limit}&status=${encodeURIComponent(status)}`;
   const response = await fetch(endpoint);
+
+  if (isNotFound(response)) {
+    const summaryResponse = await fetch(`${BASE_URL}/api/dashboard/summary`);
+    await assertOk(summaryResponse, `${BASE_URL}/api/dashboard/summary`);
+    const summary = (await summaryResponse.json()) as DashboardSummary;
+    const fallbackRuns = (summary.most_recent_runs || []).map((run) => ({
+      id: run.id,
+      brief_topic: run.brief_topic,
+      status: run.status,
+      created_at: run.created_at,
+      output_options: ["blog", "twitter", "linkedin", "whatsapp"],
+      compliance_verdict: run.status === "completed" ? "PASS" : "PENDING",
+      has_hindi: false,
+    }));
+    return fallbackRuns.slice(0, limit);
+  }
+
   await assertOk(response, endpoint);
   const data = (await response.json()) as { runs: RunSummary[] };
   return data.runs || [];
@@ -158,6 +193,9 @@ export async function listRuns(limit = 20, status = "all"): Promise<RunSummary[]
 export async function getSettingsRules(): Promise<SettingsRulesResponse> {
   const endpoint = `${BASE_URL}/api/settings/rules`;
   const response = await fetch(endpoint);
+  if (isNotFound(response)) {
+    return { rules: [], count: 0, source: "unavailable" };
+  }
   await assertOk(response, endpoint);
   return (await response.json()) as SettingsRulesResponse;
 }
@@ -165,6 +203,9 @@ export async function getSettingsRules(): Promise<SettingsRulesResponse> {
 export async function reloadSettingsRules(): Promise<{ status: string; count: number; source: string }> {
   const endpoint = `${BASE_URL}/api/settings/rules/reload`;
   const response = await fetch(endpoint, { method: "POST" });
+  if (isNotFound(response)) {
+    return { status: "unavailable", count: 0, source: "unavailable" };
+  }
   await assertOk(response, endpoint);
   return (await response.json()) as { status: string; count: number; source: string };
 }
@@ -172,6 +213,9 @@ export async function reloadSettingsRules(): Promise<{ status: string; count: nu
 export async function getCorrectionsSummary(): Promise<CorrectionsSummaryResponse> {
   const endpoint = `${BASE_URL}/api/settings/corrections-summary`;
   const response = await fetch(endpoint);
+  if (isNotFound(response)) {
+    return { summary: [], total: 0 };
+  }
   await assertOk(response, endpoint);
   return (await response.json()) as CorrectionsSummaryResponse;
 }
@@ -179,6 +223,9 @@ export async function getCorrectionsSummary(): Promise<CorrectionsSummaryRespons
 export async function getStyleMemory(limit = 20): Promise<StyleMemoryResponse> {
   const endpoint = `${BASE_URL}/api/memory?limit=${limit}`;
   const response = await fetch(endpoint);
+  if (isNotFound(response)) {
+    return { by_category: {}, total: 0, categories: [] };
+  }
   await assertOk(response, endpoint);
   return (await response.json()) as StyleMemoryResponse;
 }

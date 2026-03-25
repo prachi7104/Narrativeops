@@ -116,6 +116,7 @@ describe('ApprovalGate', () => {
       expect(mockCaptureDiff).toHaveBeenCalledWith(
         'run-123',
         'blog',
+        'en',
         '<p>Original content</p>',
         'Corrected content for blog',
         'mutual_fund',

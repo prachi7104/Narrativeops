@@ -8,6 +8,7 @@ import logging
 import sys
 import threading
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
@@ -31,7 +32,24 @@ from api.graph.state import ContentState  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="NarrativeOps API")
+SSE_QUEUES: dict[str, asyncio.Queue] = {}
+SSE_TERMINAL_EVENTS: dict[str, dict] = {}
+APP_EVENT_LOOP: asyncio.AbstractEventLoop | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application startup/shutdown lifecycle."""
+    from api.data.seed_default_rules import seed_default_rules
+
+    seed_default_rules()
+    global APP_EVENT_LOOP
+    APP_EVENT_LOOP = asyncio.get_running_loop()
+    logger.info("NarrativeOps API starting")
+    yield
+
+
+app = FastAPI(title="NarrativeOps API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,9 +63,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-SSE_QUEUES: dict[str, asyncio.Queue] = {}
-APP_EVENT_LOOP: asyncio.AbstractEventLoop | None = None
 
 
 class RunRequest(BaseModel):
@@ -73,22 +88,17 @@ class PatchOutputRequest(BaseModel):
 
 class DiffRequest(BaseModel):
     channel: str
+    language: str = "en"
     original_text: str
     corrected_text: str
     content_category: str
 
 
-@app.on_event("startup")
-async def on_startup() -> None:
-    from api.data.seed_default_rules import seed_default_rules
-
-    seed_default_rules()
-    global APP_EVENT_LOOP
-    APP_EVENT_LOOP = asyncio.get_running_loop()
-    logger.info("NarrativeOps API starting")
-
-
 def _emit_sse(run_id: str, event: dict) -> None:
+    event_type = str(event.get("type") or "")
+    if event_type in {"human_required", "error", "pipeline_complete"}:
+        SSE_TERMINAL_EVENTS[run_id] = event
+
     if APP_EVENT_LOOP is None:
         logger.error("Cannot emit SSE event; app event loop is not initialized")
         return
@@ -155,9 +165,9 @@ def _extract_pipeline_status(payload: object) -> str | None:
 def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None) -> None:
     try:
         # Lazy import to avoid circular dependencies at module import time.
-        from api.graph.pipeline import build_pipeline
+        from api.graph.pipeline import get_pipeline
 
-        pipeline = build_pipeline()
+        pipeline = get_pipeline()
         config = {"configurable": {"thread_id": run_id}}
 
         requested_options = brief.get("output_options", [])
@@ -194,6 +204,7 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
             "content_category": str(brief.get("content_category", "general") or "general"),
             "output_format": output_format,
             "output_options": output_options,
+            "target_languages": brief.get("target_languages", ["en", "hi"]),
             "strategy": {},
             "trend_context": "",
             "trend_sources": [],
@@ -208,6 +219,8 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
             "rules_source": "",
             "localized_hi": "",
             "blog_html": "",
+            "faq_html": "",
+            "publisher_brief": "",
             "twitter_thread": [],
             "linkedin_post": "",
             "whatsapp_message": "",
@@ -271,6 +284,49 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
                 "message": str(exc),
             },
         )
+    finally:
+        # Stream lifecycle owns cleanup so terminal events remain readable by the client.
+        pass
+
+
+def _resume_pipeline_sync(run_id: str) -> None:
+    """Resume graph from checkpoint — runs in a thread pool to avoid blocking the event loop."""
+    from api.graph.pipeline import get_pipeline
+
+    pipeline = get_pipeline()
+    config = {"configurable": {"thread_id": run_id}}
+
+    checkpoint_state = pipeline.get_state(config)
+    values = getattr(checkpoint_state, "values", {}) or {}
+    current_status = str(values.get("pipeline_status") or "")
+
+    if current_status != "awaiting_approval":
+        logger.info(
+            "Skipping resume for run_id=%s because status=%s",
+            run_id,
+            current_status,
+        )
+        return
+
+    pipeline.update_state(config, {"human_approved": True})
+
+    for update in pipeline.stream(None, config, stream_mode="updates"):
+        _emit_sse(
+            run_id,
+            {
+                "type": "update",
+                "run_id": run_id,
+                "data": update,
+            },
+        )
+
+    _emit_sse(
+        run_id,
+        {
+            "type": "pipeline_complete",
+            "run_id": run_id,
+        },
+    )
 
 
 @app.get("/health")
@@ -283,7 +339,8 @@ async def upload_brand_guide(
     file: UploadFile = File(...),  # noqa: B008
     session_id: str = Form(...),  # noqa: B008
 ) -> dict:
-    if file.content_type != "application/pdf":
+    # A4: robust content_type check
+    if str(file.content_type or "").lower().split(";")[0].strip() != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
 
     pdf_bytes = await file.read()
@@ -321,21 +378,39 @@ async def run_pipeline(request: RunRequest) -> dict:
 @app.get("/api/pipeline/{run_id}/stream")
 async def stream_pipeline(run_id: str) -> StreamingResponse:
     queue = SSE_QUEUES.get(run_id)
+
+    if queue is None and run_id in SSE_TERMINAL_EVENTS:
+        terminal_event = SSE_TERMINAL_EVENTS.pop(run_id)
+
+        async def terminal_event_generator():
+            yield f"data: {json.dumps(terminal_event)}\n\n"
+
+        return StreamingResponse(
+            terminal_event_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     if queue is None:
         raise HTTPException(status_code=404, detail="run_id not found")
 
     async def event_generator():
         terminal_types = {"human_required", "error", "pipeline_complete"}
 
-        while True:
-            try:
-                event = await asyncio.wait_for(queue.get(), timeout=120)
-                yield f"data: {json.dumps(event)}\n\n"
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=120)
+                    yield f"data: {json.dumps(event)}\n\n"
 
-                if event.get("type") in terminal_types:
-                    break
-            except TimeoutError:
-                yield 'data: {"type":"heartbeat"}\n\n'
+                    if event.get("type") in terminal_types:
+                        break
+                except TimeoutError:
+                    yield 'data: {"type":"heartbeat"}\n\n'
+        finally:
+            # A3: Clean up SSE queue when stream disconnects
+            SSE_QUEUES.pop(run_id, None)
+            SSE_TERMINAL_EVENTS.pop(run_id, None)
 
     return StreamingResponse(
         event_generator(),
@@ -354,26 +429,16 @@ async def approve_pipeline(run_id: str, request: ApproveRequest) -> dict:
     if request.approved:
         database.approve_run(run_id)
 
-        # Resume graph from checkpoint with human approval signal.
-        from api.graph.pipeline import build_pipeline
-
-        pipeline = build_pipeline()
-        config = {"configurable": {"thread_id": run_id}}
-
-        # Update state with human_approved and resume from the interrupted node
-        # LangGraph requires update_state followed by invoke to resume
-        pipeline.update_state(config, {"human_approved": True})
-
-        # Resume the pipeline from the interrupt point
-        for _update in pipeline.stream(None, config, stream_mode="updates"):
-            pass  # run to completion synchronously
-
-        queue = SSE_QUEUES.get(run_id)
-        if queue is not None and APP_EVENT_LOOP is not None:
-            asyncio.run_coroutine_threadsafe(
-                queue.put({"type": "pipeline_complete", "run_id": run_id}),
-                APP_EVENT_LOOP,
-            )
+        # A2: Run blocking pipeline resume in a thread-pool executor
+        loop = asyncio.get_event_loop()
+        try:
+            await loop.run_in_executor(None, _resume_pipeline_sync, run_id)
+        except Exception as exc:
+            logger.exception("Failed to resume pipeline for run_id=%s: %s", run_id, exc)
+            raise HTTPException(
+                status_code=409,
+                detail="Unable to resume pipeline checkpoint for approval",
+            ) from exc
         return {"status": "approved"}
 
     database.update_run_status(run_id, "rejected")
@@ -474,6 +539,7 @@ async def capture_pipeline_diff(run_id: str, request: DiffRequest) -> dict:
                 .update({"content": request.corrected_text})
                 .eq("run_id", run_id)
                 .eq("channel", request.channel)
+                .eq("language", request.language)
                 .execute()
             )
 
@@ -576,7 +642,13 @@ async def get_dashboard_summary() -> dict:
         sum_hours = sum(float(row.get("estimated_hours_saved") or 0) for row in metric_rows)
         sum_cost = sum(float(row.get("estimated_cost_saved_inr") or 0) for row in metric_rows)
         sum_corrections = sum(int(row.get("corrections_applied") or 0) for row in metric_rows)
-        total_runs = len(metric_rows)
+
+        total_runs_response = (
+            client.table("pipeline_runs")
+            .select("id", count="exact")
+            .execute()
+        )
+        total_runs = int(getattr(total_runs_response, "count", None) or len(total_runs_response.data or []))
 
         formatted_recent_runs = []
         for run in recent_runs:

@@ -166,7 +166,43 @@ DRAFT:
     cleaned_response = cleaned_response.strip()
 
     # Parse JSON
-    result = json.loads(cleaned_response)
+    try:
+        result = json.loads(cleaned_response)
+    except (json.JSONDecodeError, ValueError) as parse_exc:
+        logger.warning(
+            "Failed to parse compliance JSON response (iteration %s): %s",
+            current_iterations + 1,
+            parse_exc,
+        )
+        parse_feedback = [
+            {
+                "section": "BODY",
+                "sentence": "",
+                "rule_id": "SYSTEM_PARSE",
+                "severity": "error",
+                "message": "Compliance model response could not be parsed. Manual review required.",
+                "suggested_fix": "Regenerate compliance analysis and re-check all high-risk claims.",
+            }
+        ]
+        return {
+            "compliance_verdict": "REVISE",
+            "compliance_feedback": parse_feedback,
+            "compliance_iterations": current_iterations + 1,
+            "org_rules_count": len(combined_rules),
+            "rules_source": rules_source,
+            "pipeline_status": "compliance_complete",
+            "audit_log": state.get("audit_log", [])
+            + [
+                {
+                    "agent": "compliance_agent",
+                    "action": "checked_compliance",
+                    "model": model,
+                    "duration_ms": duration_ms,
+                    "verdict": "REVISE",
+                    "output_summary": "JSON parse failed — defaulting to REVISE",
+                }
+            ],
+        }
 
     # Extract components
     verdict = result.get("verdict", "PASS")

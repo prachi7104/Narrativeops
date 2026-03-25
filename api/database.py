@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 
 from supabase import Client, create_client
@@ -14,27 +15,32 @@ logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
 _client: Client | None = None
+_client_lock = threading.Lock()
 
 
 def get_supabase_client() -> Client | None:
-    """Create Supabase client lazily and reuse it across calls."""
+    """Create Supabase client lazily and reuse it across calls (thread-safe)."""
     global _client
     if _client is not None:
         return _client
 
-    try:
-        supabase_url = os.getenv("SUPABASE_URL", "").strip()
-        supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "").strip()
+    with _client_lock:
+        if _client is not None:
+            return _client
 
-        if not supabase_url or not supabase_anon_key:
-            logger.error("SUPABASE_URL or SUPABASE_ANON_KEY is missing")
+        try:
+            supabase_url = os.getenv("SUPABASE_URL", "").strip()
+            supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "").strip()
+
+            if not supabase_url or not supabase_anon_key:
+                logger.error("SUPABASE_URL or SUPABASE_ANON_KEY is missing")
+                return None
+
+            _client = create_client(supabase_url, supabase_anon_key)
+            return _client
+        except Exception as exc:
+            logger.exception("Failed to initialize Supabase client: %s", exc)
             return None
-
-        _client = create_client(supabase_url, supabase_anon_key)
-        return _client
-    except Exception as exc:
-        logger.exception("Failed to initialize Supabase client: %s", exc)
-        return None
 
 
 def create_run(run_id: str, brief: dict) -> None:
@@ -85,6 +91,28 @@ def write_pipeline_outputs(run_id: str, outputs: dict, localized_hi: str) -> Non
                     "channel": "blog",
                     "language": "en",
                     "content": blog_html,
+                }
+            )
+
+        faq_html = str(outputs.get("faq_html", "") or "").strip()
+        if faq_html:
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "channel": "faq",
+                    "language": "en",
+                    "content": faq_html,
+                }
+            )
+
+        publisher_brief = str(outputs.get("publisher_brief", "") or "").strip()
+        if publisher_brief:
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "channel": "publisher_brief",
+                    "language": "en",
+                    "content": publisher_brief,
                 }
             )
 
@@ -512,6 +540,16 @@ def get_pipeline_metrics(run_id: str) -> dict | None:
         return None
 
 
+def _status_to_compliance(status: str) -> str:
+    """Derive compliance verdict from pipeline run status."""
+    return {
+        "completed": "PASS",
+        "awaiting_approval": "PASS",
+        "escalated": "REJECT",
+        "failed": "ERROR",
+    }.get(status, "PENDING")
+
+
 def list_pipeline_runs(limit: int = 20, status: str | None = None) -> list[dict]:
     """Return recent pipeline runs, optionally filtered by status, with attached metrics."""
     client = get_supabase_client()
@@ -522,7 +560,7 @@ def list_pipeline_runs(limit: int = 20, status: str | None = None) -> list[dict]
         safe_limit = max(1, min(limit, 100))
         query = (
             client.table("pipeline_runs")
-            .select("id,brief_topic,status,created_at")
+            .select("id,brief_topic,status,created_at,compliance_iterations,brief_json")
             .order("created_at", desc=True)
             .limit(safe_limit)
         )
@@ -537,6 +575,8 @@ def list_pipeline_runs(limit: int = 20, status: str | None = None) -> list[dict]
 
         run_ids = [str(run.get("id") or "") for run in runs if run.get("id")]
         metrics_by_run: dict[str, dict] = {}
+        hindi_run_ids: set[str] = set()
+
         if run_ids:
             metrics_response = (
                 client.table("pipeline_metrics")
@@ -551,10 +591,46 @@ def list_pipeline_runs(limit: int = 20, status: str | None = None) -> list[dict]
                 if run_id:
                     metrics_by_run[run_id] = metric
 
+            # C3: Bulk query for Hindi outputs
+            hindi_response = (
+                client.table("pipeline_outputs")
+                .select("run_id")
+                .in_("run_id", run_ids)
+                .eq("language", "hi")
+                .execute()
+            )
+            hindi_run_ids = {
+                str(row.get("run_id") or "") for row in (hindi_response.data or [])
+            }
+
         result: list[dict] = []
         for run in runs:
             run_id = str(run.get("id") or "")
-            merged = {**run, **metrics_by_run.get(run_id, {})}
+            run_status = str(run.get("status") or "")
+
+            # C1: Extract output_options from brief_json
+            brief_json = run.get("brief_json") or {}
+            if isinstance(brief_json, str):
+                try:
+                    brief_json = json.loads(brief_json)
+                except (json.JSONDecodeError, ValueError):
+                    brief_json = {}
+            output_options = brief_json.get("output_options") or [
+                "blog",
+                "twitter",
+                "linkedin",
+                "whatsapp",
+            ]
+
+            merged = {
+                **run,
+                **metrics_by_run.get(run_id, {}),
+                "output_options": output_options,
+                "compliance_verdict": _status_to_compliance(run_status),
+                "has_hindi": run_id in hindi_run_ids,
+            }
+            # Remove brief_json from response (it can be large)
+            merged.pop("brief_json", None)
             result.append(merged)
 
         return result

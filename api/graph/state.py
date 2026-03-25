@@ -27,6 +27,8 @@ class ContentState(TypedDict):
       - rules_source: Which rules were used ('org_rules' or 'default')
       - localized_hi: Hindi-adapted content from localization agent
       - blog_html: ReportLab-generated HTML article
+      - faq_html: HTML FAQ block for support/distribution use
+      - publisher_brief: Plain-text launch notes for editorial/publishing ops
       - twitter_thread: List of tweets (max 280 chars each)
       - linkedin_post: Single LinkedIn post
       - whatsapp_message: WhatsApp-formatted message
@@ -48,6 +50,7 @@ class ContentState(TypedDict):
     content_category: str
     output_format: str
     output_options: list[str]
+    target_languages: list[str]
     strategy: dict
     trend_context: str
     trend_sources: list[str]
@@ -62,6 +65,8 @@ class ContentState(TypedDict):
     rules_source: str
     localized_hi: str
     blog_html: str
+    faq_html: str
+    publisher_brief: str
     twitter_thread: list[str]
     linkedin_post: str
     whatsapp_message: str

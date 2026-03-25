@@ -1,6 +1,8 @@
 import {
   captureDiff,
   getOutputs,
+  listRuns,
+  reloadSettingsRules,
   startPipeline,
   uploadBrandGuide,
 } from './client';
@@ -64,7 +66,7 @@ describe('api/client', () => {
       }),
     );
 
-    await captureDiff('run-1', 'blog', 'original', 'corrected', 'mutual_fund');
+    await captureDiff('run-1', 'blog', 'en', 'original', 'corrected', 'mutual_fund');
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, options] = fetchMock.mock.calls[0];
@@ -73,6 +75,7 @@ describe('api/client', () => {
 
     const body = JSON.parse(String((options as RequestInit).body));
     expect(body.channel).toBe('blog');
+    expect(body.language).toBe('en');
     expect(body.original_text).toBe('original');
     expect(body.corrected_text).toBe('corrected');
     expect(body.content_category).toBe('mutual_fund');
@@ -87,5 +90,57 @@ describe('api/client', () => {
     );
 
     await expect(getOutputs('run-1')).rejects.toThrow(/500/);
+  });
+
+  it('listRuns falls back to dashboard summary when runs endpoint is missing', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response('Not Found', {
+          status: 404,
+          statusText: 'Not Found',
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            most_recent_runs: [
+              {
+                id: 'run-1',
+                brief_topic: 'SIP strategy',
+                status: 'completed',
+                created_at: '2026-01-01T00:00:00Z',
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+      );
+
+    const runs = await listRuns(20, 'all');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/pipeline/runs');
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/api/dashboard/summary');
+    expect(runs).toHaveLength(1);
+    expect(runs[0].id).toBe('run-1');
+    expect(runs[0].compliance_verdict).toBe('PASS');
+  });
+
+  it('reloadSettingsRules returns unavailable when endpoint is missing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('Not Found', {
+        status: 404,
+        statusText: 'Not Found',
+      }),
+    );
+
+    const result = await reloadSettingsRules();
+
+    expect(result.status).toBe('unavailable');
+    expect(result.count).toBe(0);
+    expect(result.source).toBe('unavailable');
   });
 });

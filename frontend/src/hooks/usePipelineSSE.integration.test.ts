@@ -216,8 +216,9 @@ describe('usePipelineSSE - Phase 1 Bug Fixes', () => {
     const onAgentUpdate = vi.fn();
     const onHumanRequired = vi.fn();
     const onError = vi.fn();
+    const onComplete = vi.fn();
 
-    renderHook(() => usePipelineSSE('run-123', onAgentUpdate, onHumanRequired, onError));
+    renderHook(() => usePipelineSSE('run-123', onAgentUpdate, onHumanRequired, onError, onComplete));
 
     const es = MockEventSource.instances[0];
 
@@ -228,7 +229,8 @@ describe('usePipelineSSE - Phase 1 Bug Fixes', () => {
       }),
     } as MessageEvent);
 
-    expect(onHumanRequired).toHaveBeenCalledWith('run-123');
+    expect(onComplete).toHaveBeenCalledWith('run-123');
+    expect(onHumanRequired).not.toHaveBeenCalled();
     expect(es.closed).toBe(true);
   });
 

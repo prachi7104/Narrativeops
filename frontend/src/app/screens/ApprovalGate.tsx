@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import { Twitter, Linkedin, MessageCircle, FileText, Edit3, Check, X, ArrowLeft } from 'lucide-react';
+import confetti from 'canvas-confetti';
+import { motion } from 'motion/react';
 
-import { getOutputs, getMetrics, captureDiff, approvePipeline, getAuditTrail } from '../api/client';
+import { getOutputs, getMetrics, captureDiff, approvePipeline, rejectPipeline, getAuditTrail } from '../api/client';
 import type {
   AuditEvent,
   ComplianceAnnotation,
@@ -11,12 +13,14 @@ import type {
   PipelineMetrics,
 } from '../api/types';
 
-type Channel = 'blog' | 'op_ed' | 'explainer_box' | 'twitter' | 'linkedin' | 'whatsapp' | 'hindi';
+type Channel = 'blog' | 'faq' | 'publisher_brief' | 'op_ed' | 'explainer_box' | 'twitter' | 'linkedin' | 'whatsapp' | 'hindi';
 type OutputFormat = 'et_op_ed' | 'et_explainer_box' | 'multi_platform_pack';
-type OutputOption = 'et_op_ed' | 'et_explainer_box' | 'blog' | 'linkedin' | 'whatsapp' | 'twitter';
+type OutputOption = 'et_op_ed' | 'et_explainer_box' | 'blog' | 'faq' | 'publisher_brief' | 'linkedin' | 'whatsapp' | 'twitter';
 
 interface ChannelContent {
   blog?: string;
+  faq?: string;
+  publisher_brief?: string;
   op_ed?: string;
   explainer_box?: string;
   twitter?: string;
@@ -76,6 +80,8 @@ function mapOutputsToContent(outputs: PipelineOutput[]): ChannelContent {
 
   return {
     blog: blogRaw,
+    faq: outputs.find((o) => o.channel === 'faq')?.content || '',
+    publisher_brief: outputs.find((o) => o.channel === 'publisher_brief')?.content || '',
     op_ed: outputs.find((o) => o.channel === 'op_ed')?.content || '',
     explainer_box: outputs.find((o) => o.channel === 'explainer_box')?.content || '',
     twitter: twitterCombined,
@@ -111,6 +117,8 @@ function parseFormatMetadata(events: AuditEvent[]): { format: OutputFormat; opti
           item === 'et_op_ed' ||
           item === 'et_explainer_box' ||
           item === 'blog' ||
+          item === 'faq' ||
+          item === 'publisher_brief' ||
           item === 'linkedin' ||
           item === 'whatsapp' ||
           item === 'twitter'
@@ -119,12 +127,12 @@ function parseFormatMetadata(events: AuditEvent[]): { format: OutputFormat; opti
 
     return {
       format,
-      options: options.length > 0 ? options : ['blog', 'twitter', 'linkedin', 'whatsapp'],
+      options: options.length > 0 ? options : ['blog', 'faq', 'publisher_brief', 'twitter', 'linkedin', 'whatsapp'],
     };
   } catch {
     return {
       format: 'multi_platform_pack',
-      options: ['blog', 'twitter', 'linkedin', 'whatsapp'],
+      options: ['blog', 'faq', 'publisher_brief', 'twitter', 'linkedin', 'whatsapp'],
     };
   }
 }
@@ -141,13 +149,15 @@ export function ApprovalGate() {
   const [originalContent, setOriginalContent] = useState<ChannelContent>({});
   const [metrics, setMetrics] = useState<PipelineMetrics | null>(null);
   const [complianceSummary, setComplianceSummary] = useState<ComplianceAuditSummary | null>(null);
-  const [outputOptions, setOutputOptions] = useState<OutputOption[]>(['blog', 'twitter', 'linkedin', 'whatsapp']);
+  const [outputOptions, setOutputOptions] = useState<OutputOption[]>(['blog', 'faq', 'publisher_brief', 'twitter', 'linkedin', 'whatsapp']);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [toast, setToast] = useState('');
   const [unsavedTabs, setUnsavedTabs] = useState<Set<Channel>>(new Set());
 
   const hasAnyGeneratedOutput = [
     content.blog,
+    content.faq,
+    content.publisher_brief,
     content.op_ed,
     content.explainer_box,
     content.twitter,
@@ -156,7 +166,7 @@ export function ApprovalGate() {
     content.hindi,
   ].some((value) => (value || '').trim().length > 0);
 
-  const loadRunData = async (withSpinner = false) => {
+  const loadRunData = useCallback(async (withSpinner = false) => {
     if (!id) return;
     if (withSpinner) {
       setIsRefreshing(true);
@@ -195,11 +205,11 @@ export function ApprovalGate() {
         setIsRefreshing(false);
       }
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     void loadRunData();
-  }, [id]);
+  }, [loadRunData]);
 
   const complianceAnnotations = (complianceSummary?.annotations || []) as ComplianceAnnotation[];
   const groupedAnnotations = complianceAnnotations.reduce(
@@ -248,7 +258,16 @@ export function ApprovalGate() {
 
     try {
       if (original !== corrected) {
-        await captureDiff(id, tab, original, corrected, contentCategory);
+        const channelForDiff = tab === 'hindi' ? 'article' : tab;
+        const languageForDiff = tab === 'hindi' ? 'hi' : 'en';
+        await captureDiff(
+          id,
+          channelForDiff,
+          languageForDiff,
+          original,
+          corrected,
+          contentCategory,
+        );
         setToast('Correction captured for future drafts');
         setTimeout(() => setToast(''), 3000);
         setOriginalContent((prev) => ({ ...prev, [tab]: corrected }));
@@ -276,9 +295,20 @@ export function ApprovalGate() {
     if (!id) return;
     try {
       await approvePipeline(id);
-      navigate('/pipelines');
+      confetti({ particleCount: 80, spread: 70, colors: ['#7C3AED', '#06B6D4', '#10B981'] });
+      setTimeout(() => navigate('/pipelines'), 1200);
     } catch (err) {
       console.error('Approve failed:', err);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!id) return;
+    try {
+      await rejectPipeline(id);
+      navigate('/pipelines');
+    } catch (err) {
+      console.error('Reject failed:', err);
     }
   };
 
@@ -289,6 +319,10 @@ export function ApprovalGate() {
       case 'op_ed':
         return FileText;
       case 'explainer_box':
+        return FileText;
+      case 'faq':
+        return FileText;
+      case 'publisher_brief':
         return FileText;
       case 'twitter':
         return Twitter;
@@ -375,7 +409,7 @@ export function ApprovalGate() {
     }
 
     // Preview mode
-    if (activeTab === 'blog' || activeTab === 'op_ed' || activeTab === 'explainer_box') {
+    if (activeTab === 'blog' || activeTab === 'faq' || activeTab === 'op_ed' || activeTab === 'explainer_box') {
       const hasHtml = /<\/?[a-z][\s\S]*>/i.test(activeContent);
 
       if (!activeContent.trim()) {
@@ -384,6 +418,8 @@ export function ApprovalGate() {
             ? 'No ET op-ed content is available for this run yet.'
             : activeTab === 'explainer_box'
               ? 'No ET explainer box content is available for this run yet.'
+              : activeTab === 'faq'
+                ? 'No FAQ content is available for this run yet.'
               : 'No blog content is available for this run yet.';
 
         return (
@@ -400,6 +436,8 @@ export function ApprovalGate() {
           ? 'ET Op-Ed'
           : activeTab === 'explainer_box'
             ? 'ET Explainer Box'
+            : activeTab === 'faq'
+              ? 'FAQ'
             : 'Blog';
 
       return hasHtml ? (
@@ -457,6 +495,12 @@ export function ApprovalGate() {
   if (outputOptions.includes('blog')) {
     tabs.push({ id: 'blog', label: 'Blog' });
   }
+  if (outputOptions.includes('faq')) {
+    tabs.push({ id: 'faq', label: 'FAQ' });
+  }
+  if (outputOptions.includes('publisher_brief')) {
+    tabs.push({ id: 'publisher_brief', label: 'Publisher Brief' });
+  }
   if (outputOptions.includes('twitter')) {
     tabs.push({ id: 'twitter', label: 'Twitter' });
   }
@@ -471,7 +515,12 @@ export function ApprovalGate() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-primary">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+      className="min-h-screen bg-bg-primary"
+    >
       {/* Header */}
       <div className="border-b border-border-default">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 md:py-6">
@@ -498,7 +547,7 @@ export function ApprovalGate() {
                 <span className="hidden md:inline">Approve & publish</span>
                 <span className="md:hidden">Approve</span>
               </button>
-              <button className="flex items-center gap-2 px-4 py-2.5 text-text-secondary hover:text-error transition-colors">
+              <button onClick={handleReject} className="flex items-center gap-2 px-4 py-2.5 text-text-secondary hover:text-error transition-colors">
                 <X className="w-4 h-4" />
                 <span className="hidden md:inline">Reject</span>
               </button>
@@ -704,20 +753,20 @@ export function ApprovalGate() {
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-text-secondary">Total time</span>
-                <span className="text-text-primary font-medium">2m 34s</span>
+                <span className="text-text-primary font-medium">{metrics?.total_duration_display ?? '—'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-secondary">Agents used</span>
-                <span className="text-text-primary font-medium">7</span>
+                <span className="text-text-secondary">Compliance iterations</span>
+                <span className="text-text-primary font-medium">{metrics?.compliance_iterations ?? '—'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-secondary">Disclaimer</span>
-                <span className="text-success font-medium">Added</span>
+                <span className="text-text-secondary">Trend sources</span>
+                <span className="text-text-primary font-medium">{metrics?.trend_sources_used ?? 0}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

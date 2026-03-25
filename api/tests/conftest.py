@@ -75,6 +75,8 @@ def minimal_content_state():
             "rules_source": "",
             "localized_hi": "",
             "blog_html": "",
+            "faq_html": "",
+            "publisher_brief": "",
             "twitter_thread": [],
             "linkedin_post": "",
             "whatsapp_message": "",

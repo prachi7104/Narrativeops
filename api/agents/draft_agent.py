@@ -244,8 +244,8 @@ Return ONLY the article text with section markers. No explanation."""
     return {
         "draft": draft_content,
         "draft_version": new_version,
-        "corrections_applied": len(recent_corrections),
         "compliance_feedback": [],  # Clear after processing
         "pipeline_status": "draft_complete",
-        "audit_log": state.get("audit_log", []) + [audit_entry]
+        "corrections_applied": len(recent_corrections),
+        "audit_log": state.get("audit_log", []) + [audit_entry],
     }

@@ -91,7 +91,7 @@ def _fetch_from_rss(topic: str) -> tuple[list[str], list[str]]:
 def run_trend_agent(state: ContentState) -> dict:
     """Generate trend context from cache first, then Tavily, then ET RSS fallback."""
     topic = str(state.get("brief", {}).get("topic", "") or "")
-    topic_hash = hashlib.md5(topic.lower().strip().encode()).hexdigest()
+    topic_hash = hashlib.md5(topic.lower().strip().encode(), usedforsecurity=False).hexdigest()
 
     snippets: list[str] = []
     sources: list[str] = []

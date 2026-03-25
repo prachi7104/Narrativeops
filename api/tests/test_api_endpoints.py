@@ -4,14 +4,16 @@ from types import SimpleNamespace
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from api.main import SSE_QUEUES, app
+from api.main import SSE_QUEUES, SSE_TERMINAL_EVENTS, app
 
 
 @pytest.fixture(autouse=True)
 def clear_sse_queues():
     SSE_QUEUES.clear()
+    SSE_TERMINAL_EVENTS.clear()
     yield
     SSE_QUEUES.clear()
+    SSE_TERMINAL_EVENTS.clear()
 
 
 @pytest.mark.asyncio
@@ -52,6 +54,19 @@ async def test_stream_returns_404_for_unknown_run():
         response = await client.get("/api/pipeline/nonexistent-id/stream")
 
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_stream_replays_terminal_event_when_queue_is_missing():
+    SSE_TERMINAL_EVENTS["run-123"] = {"type": "pipeline_complete", "run_id": "run-123"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/pipeline/run-123/stream")
+
+    assert response.status_code == 200
+    assert "pipeline_complete" in response.text
+    assert "run-123" in response.text
+    assert "run-123" not in SSE_TERMINAL_EVENTS
 
 
 @pytest.mark.asyncio
@@ -273,3 +288,55 @@ async def test_memory_endpoint(mocker):
     data = response.json()
     assert data["total"] == 1
     assert data["categories"] == ["general"]
+
+
+@pytest.mark.asyncio
+async def test_diff_update_scopes_by_language(mocker):
+    mocker.patch("api.main.database.save_editorial_correction", return_value=None)
+
+    update_query = mocker.Mock()
+    update_query.update.return_value = update_query
+    update_query.eq.return_value = update_query
+    update_query.execute.return_value = SimpleNamespace(data=[])
+
+    status_query = mocker.Mock()
+    status_query.select.return_value = status_query
+    status_query.eq.return_value = status_query
+    status_query.limit.return_value = status_query
+    status_query.execute.return_value = SimpleNamespace(data=[{"status": "completed"}])
+
+    count_query = mocker.Mock()
+    count_query.select.return_value = count_query
+    count_query.eq.return_value = count_query
+    count_query.execute.return_value = SimpleNamespace(data=[{"id": 1}], count=1)
+
+    mock_client = mocker.Mock()
+
+    def _table(name: str):
+        if name == "pipeline_outputs":
+            return update_query
+        if name == "pipeline_runs":
+            return status_query
+        if name == "editorial_corrections":
+            return count_query
+        return mocker.Mock()
+
+    mock_client.table.side_effect = _table
+    mocker.patch("api.main.database.get_supabase_client", return_value=mock_client)
+
+    payload = {
+        "channel": "article",
+        "language": "hi",
+        "original_text": "old",
+        "corrected_text": "new",
+        "content_category": "general",
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/pipeline/test-run-id/diff", json=payload)
+
+    assert response.status_code == 200
+    language_eq_calls = [
+        call for call in update_query.eq.call_args_list if call.args == ("language", "hi")
+    ]
+    assert len(language_eq_calls) == 1

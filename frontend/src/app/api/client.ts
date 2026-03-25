@@ -1,5 +1,6 @@
 export {
   approvePipeline,
+  rejectPipeline,
   captureDiff,
   getCorrectionsSummary,
   getAuditPdfUrl,

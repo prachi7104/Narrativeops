@@ -32,6 +32,7 @@ export function usePipelineSSE(
   onAgentUpdate: (agentName: string, eventData: Record<string, unknown>) => void,
   onHumanRequired: (runId: string) => void,
   onError: (message: string) => void,
+  onComplete?: (runId: string) => void,
 ): void {
   useEffect(() => {
     if (!runId) {
@@ -60,9 +61,15 @@ export function usePipelineSSE(
         return;
       }
 
-      if (event.type === "human_required" || event.type === "pipeline_complete") {
+      if (event.type === "human_required") {
         onHumanRequired((event.run_id as string) || runId);
         eventSource.close();
+        return;
+      }
+
+      if (event.type === "pipeline_complete") {
+        eventSource.close();
+        if (onComplete) onComplete((event.run_id as string) || runId);
         return;
       }
 
@@ -86,5 +93,5 @@ export function usePipelineSSE(
     return () => {
       eventSource.close();
     };
-  }, [runId, onAgentUpdate, onHumanRequired, onError]);
+  }, [runId, onAgentUpdate, onHumanRequired, onError, onComplete]);
 }
