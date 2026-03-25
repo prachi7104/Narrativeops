@@ -224,6 +224,7 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
             "twitter_thread": [],
             "linkedin_post": "",
             "whatsapp_message": "",
+            "whatsapp_hi_message": "",
             "human_approved": False,
             "escalation_required": False,
             "diff_captured": False,
@@ -426,6 +427,20 @@ async def stream_pipeline(run_id: str) -> StreamingResponse:
     )
 
 
+@app.get("/api/pipeline/{run_id}/status")
+async def get_pipeline_status(run_id: str) -> dict:
+    run = database.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="run_id not found")
+
+    status = str(run.get("status") or "unknown")
+    return {
+        "run_id": run_id,
+        "status": status,
+        "pipeline_status": status,
+    }
+
+
 @app.get("/api/pipeline/{run_id}/outputs")
 async def get_pipeline_outputs(run_id: str) -> dict:
     return {"outputs": database.get_outputs(run_id)}
@@ -591,6 +606,8 @@ async def get_pipeline_run_metrics(run_id: str) -> dict:
             return {"error": "Metrics not yet available", "run_id": run_id}
 
         total_duration_ms = int(metrics.get("total_duration_ms") or 0)
+        actual_duration_ms = int(metrics.get("actual_duration_ms") or total_duration_ms)
+        baseline_manual_hours = float(metrics.get("baseline_manual_hours") or 7.5)
         estimated_hours_saved = float(metrics.get("estimated_hours_saved") or 0)
         estimated_cost_saved_inr = float(metrics.get("estimated_cost_saved_inr") or 0)
         compliance_iterations = int(metrics.get("compliance_iterations") or 0)
@@ -601,6 +618,9 @@ async def get_pipeline_run_metrics(run_id: str) -> dict:
         return {
             "run_id": run_id,
             "total_duration_ms": total_duration_ms,
+            "actual_duration_ms": actual_duration_ms,
+            "actual_duration_display": _format_duration_ms(actual_duration_ms),
+            "baseline_manual_hours": baseline_manual_hours,
             "total_duration_display": _format_duration_ms(total_duration_ms),
             "estimated_hours_saved": estimated_hours_saved,
             "time_saved_display": f"{estimated_hours_saved} hours",

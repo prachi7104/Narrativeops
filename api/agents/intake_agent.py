@@ -12,6 +12,44 @@ from api.llm import call_llm
 logger = logging.getLogger(__name__)
 
 
+def _derive_best_channel(engagement_data: dict | None, default_channel: str = "blog") -> str:
+    if not isinstance(engagement_data, dict) or not engagement_data:
+        return default_channel
+
+    best_channel = default_channel
+    best_score = float("-inf")
+
+    for channel, payload in engagement_data.items():
+        if not isinstance(payload, dict):
+            continue
+
+        engagement_rate = payload.get("engagement_rate", 0)
+        avg_views = payload.get("avg_views", 0)
+
+        try:
+            rate_value = float(engagement_rate)
+        except (TypeError, ValueError):
+            rate_value = 0.0
+
+        try:
+            views_value = float(avg_views)
+        except (TypeError, ValueError):
+            views_value = 0.0
+
+        score = (rate_value * 100) + (views_value / 1000)
+        if score > best_score:
+            best_score = score
+            best_channel = str(channel).strip() or default_channel
+
+    channel_map = {
+        "text_article": "blog",
+        "article": "blog",
+        "video": "linkedin",
+        "short_video": "twitter",
+    }
+    return channel_map.get(best_channel, best_channel)
+
+
 def run_intake_agent(state: ContentState) -> dict:
     """
     Process brief and engagement data to create content strategy.
@@ -45,6 +83,7 @@ Return ONLY a JSON object with this exact schema:
   "channels": ["blog", "twitter", "linkedin", "whatsapp"],
   "languages": ["en", "hi"],
   "compliance_flags": ["list of risk areas mentioned in the brief"],
+  "best_channel": "blog | twitter | linkedin | whatsapp | faq | publisher_brief | null",
   "strategy_recommendation": "string or null",
   "content_calendar": [{"week": 1, "items": [{"format": "...", "topic": "...", "channel": "..."}]}] or null
 }
@@ -102,6 +141,7 @@ Return ONLY the JSON object. No explanation, no markdown, no preamble."""
             "channels": ["blog", "twitter", "linkedin", "whatsapp"],
             "languages": ["en", "hi"],
             "compliance_flags": [],
+            "best_channel": None,
             "strategy_recommendation": None,
             "content_calendar": None,
         }
@@ -109,6 +149,15 @@ Return ONLY the JSON object. No explanation, no markdown, no preamble."""
     # F2: Override LLM-chosen tone with user-selected tone if provided
     if brief.get("tone"):
         strategy["tone"] = brief["tone"]
+
+    inferred_best_channel = _derive_best_channel(engagement_data)
+    allowed_channels = {"blog", "twitter", "linkedin", "whatsapp", "faq", "publisher_brief"}
+    llm_best_channel = str(strategy.get("best_channel") or "").strip()
+
+    if llm_best_channel not in allowed_channels:
+        strategy["best_channel"] = inferred_best_channel
+    else:
+        strategy["best_channel"] = llm_best_channel
 
     # Build audit log entry
     audit_entry = {

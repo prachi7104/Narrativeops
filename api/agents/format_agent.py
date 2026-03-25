@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Any
 
@@ -30,6 +31,17 @@ OUTPUT_OPTION_ORDER = [
     "whatsapp",
     "twitter",
 ]
+
+
+def _get_float_env(name: str, default: float) -> float:
+    raw_value = str(os.getenv(name, "") or "").strip()
+    if not raw_value:
+        return default
+    try:
+        return float(raw_value)
+    except ValueError:
+        logger.warning("Invalid float for %s=%s. Falling back to %s", name, raw_value, default)
+        return default
 
 
 def _get_output_format(state: ContentState) -> str:
@@ -60,10 +72,16 @@ def _get_output_options(state: ContentState) -> list[str]:
     if not normalized:
         legacy = _get_output_format(state)
         if legacy == "et_op_ed":
-            return ["et_op_ed"]
-        if legacy == "et_explainer_box":
-            return ["et_explainer_box"]
-        return ["blog", "twitter", "linkedin", "whatsapp", "faq", "publisher_brief"]
+            normalized = ["et_op_ed"]
+        elif legacy == "et_explainer_box":
+            normalized = ["et_explainer_box"]
+        else:
+            normalized = ["blog", "twitter", "linkedin", "whatsapp", "faq", "publisher_brief"]
+
+    strategy = state.get("strategy", {})
+    preferred_channel = str(strategy.get("best_channel") or "").strip()
+    if preferred_channel in normalized:
+        normalized = [preferred_channel] + [item for item in normalized if item != preferred_channel]
 
     return normalized
 
@@ -88,6 +106,21 @@ def _validate_twitter_thread(thread: list[str]) -> list[str]:
             text = text[:280]
         validated.append(text)
     return validated
+
+
+def _build_hindi_whatsapp_variant(localized_hi: str) -> str:
+    """Create a compact WhatsApp-ready Hindi variant from localized article content."""
+    if not localized_hi:
+        return ""
+
+    text = localized_hi.replace("##INTRO", "").replace("##BODY", "").replace("##CONCLUSION", "")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    compact = "\n".join(lines[:5]).strip()
+
+    if len(compact) > 500:
+        compact = compact[:500].rstrip() + "..."
+
+    return compact
 
 
 def run_format_agent(state: ContentState) -> dict:
@@ -151,7 +184,15 @@ Rules:
 - Keep tone analytical and publication-ready.
 """
 
+    strategy = state.get("strategy", {})
+    strategy_recommendation = str(strategy.get("strategy_recommendation") or "").strip()
+    preferred_channel = str(strategy.get("best_channel") or "").strip()
+
     user_prompt = f"DRAFT:\n{draft}"
+    if strategy_recommendation:
+        user_prompt += f"\n\nSTRATEGY RECOMMENDATION:\n{strategy_recommendation}"
+    if preferred_channel:
+        user_prompt += f"\n\nPRIORITIZE THIS CHANNEL IN QUALITY AND ADAPTATION: {preferred_channel}"
 
     start_time = time.time()
     raw_response = call_llm(
@@ -181,6 +222,8 @@ Rules:
         else:
             twitter_thread = _validate_twitter_thread([str(raw_thread)])
 
+    whatsapp_hi_message = _build_hindi_whatsapp_variant(str(state.get("localized_hi", "") or ""))
+
     output_payload = {
         "blog_html": blog_html,
         "faq_html": faq_html,
@@ -190,6 +233,7 @@ Rules:
         "twitter_thread": twitter_thread,
         "linkedin_post": linkedin_post,
         "whatsapp_message": whatsapp_message,
+        "whatsapp_hi_message": whatsapp_hi_message,
     }
 
     audit_entry = {
@@ -213,6 +257,7 @@ Rules:
             "twitter_thread",
             "linkedin_post",
             "whatsapp_message",
+            "whatsapp_hi_message",
         ],
         "twitter_count": len(twitter_thread),
     }
@@ -242,26 +287,31 @@ Rules:
         recent = get_recent_corrections(category, limit=10)
         corrections_applied = len(recent)
 
-        MANUAL_HOURS_PER_PIECE = 7.5
-        COST_PER_HOUR_INR = 1500
+        baseline_manual_hours = _get_float_env("MANUAL_BASELINE_HOURS", 7.5)
+        cost_per_hour_inr = _get_float_env("MANUAL_COST_PER_HOUR_INR", 1500.0)
 
         trend_sources = state.get("trend_sources", [])
         trend_sources_used = len(trend_sources) if isinstance(trend_sources, list) else 0
 
+        actual_duration_hours = total_duration_ms / (1000 * 60 * 60)
+        estimated_hours_saved = max(0.0, baseline_manual_hours - actual_duration_hours)
+
         metrics_dict = {
             "total_duration_ms": total_duration_ms,
+            "actual_duration_ms": total_duration_ms,
+            "baseline_manual_hours": baseline_manual_hours,
             "agent_count": agent_count,
             "compliance_iterations": state.get("compliance_iterations", 0),
             "corrections_applied": corrections_applied,
             "rules_checked": state.get("org_rules_count", 8),
             "trend_sources_used": trend_sources_used,
-            "estimated_hours_saved": MANUAL_HOURS_PER_PIECE,
-            "estimated_cost_saved_inr": MANUAL_HOURS_PER_PIECE * COST_PER_HOUR_INR,
+            "estimated_hours_saved": round(estimated_hours_saved, 2),
+            "estimated_cost_saved_inr": round(estimated_hours_saved * cost_per_hour_inr, 2),
         }
         save_pipeline_metrics(state["run_id"], metrics_dict)
 
         audit_entry["metrics_saved"] = True
-        audit_entry["estimated_hours_saved"] = MANUAL_HOURS_PER_PIECE
+        audit_entry["estimated_hours_saved"] = round(estimated_hours_saved, 2)
     except Exception as exc:
         logger.exception("Failed to calculate/save pipeline metrics for run_id=%s: %s", run_id, exc)
 

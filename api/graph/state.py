@@ -32,6 +32,7 @@ class ContentState(TypedDict):
       - twitter_thread: List of tweets (max 280 chars each)
       - linkedin_post: Single LinkedIn post
       - whatsapp_message: WhatsApp-formatted message
+      - whatsapp_hi_message: Hindi WhatsApp social variant
 
     Control Fields:
       - human_approved: Whether human has approved the content
@@ -70,6 +71,7 @@ class ContentState(TypedDict):
     twitter_thread: list[str]
     linkedin_post: str
     whatsapp_message: str
+    whatsapp_hi_message: str
     human_approved: bool
     escalation_required: bool
     diff_captured: bool

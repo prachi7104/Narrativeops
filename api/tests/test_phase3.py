@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from api.agents.compliance_agent import run_compliance_agent
 from api.agents.draft_agent import run_draft_agent
 from api.agents.format_agent import run_format_agent
+from api.agents.intake_agent import run_intake_agent
 from api.main import app
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
@@ -125,8 +126,12 @@ def _minimal_format_state() -> dict:
     return {
         "run_id": "format-run-001",
         "draft": "##INTRO\nHello\n##BODY\nWorld\n##CONCLUSION\nDone",
-        "localized_hi": "हिंदी संस्करण",
+        "localized_hi": "##INTRO\nहिंदी परिचय\n##BODY\nमुख्य अंश\n##CONCLUSION\nसमापन",
         "output_options": ["blog", "faq", "publisher_brief", "twitter", "linkedin", "whatsapp"],
+        "strategy": {
+            "best_channel": "twitter",
+            "strategy_recommendation": "Prefer short threaded distribution based on recent engagement.",
+        },
         "compliance_iterations": 2,
         "org_rules_count": 12,
         "trend_sources": ["https://example.com/1", "https://example.com/2"],
@@ -248,6 +253,33 @@ async def test_metrics_endpoint_returns_error_when_not_found(mocker):
 
     assert response.status_code == 200
     assert "error" in response.json()
+
+
+@pytest.mark.asyncio
+async def test_metrics_endpoint_includes_runtime_and_baseline_fields(mocker):
+    mocker.patch(
+        "api.main.database.get_pipeline_metrics",
+        return_value={
+            "total_duration_ms": 90000,
+            "actual_duration_ms": 90000,
+            "baseline_manual_hours": 6.0,
+            "estimated_hours_saved": 5.97,
+            "estimated_cost_saved_inr": 8955.0,
+            "compliance_iterations": 1,
+            "corrections_applied": 0,
+            "rules_checked": 8,
+            "trend_sources_used": 1,
+        },
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/pipeline/runtime-fields-run/metrics")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["actual_duration_ms"] == 90000
+    assert body["actual_duration_display"]
+    assert body["baseline_manual_hours"] == 6.0
 
 
 # TEST GROUP 3: Dashboard summary
@@ -400,9 +432,9 @@ def test_format_agent_saves_metrics(mocker):
     save_metrics.assert_called_once()
     _, metrics_payload = save_metrics.call_args.args
     assert "estimated_hours_saved" in metrics_payload
-    assert float(metrics_payload["estimated_hours_saved"]) == 7.5
+    assert 0 <= float(metrics_payload["estimated_hours_saved"]) <= 7.5
     assert "estimated_cost_saved_inr" in metrics_payload
-    assert float(metrics_payload["estimated_cost_saved_inr"]) == 11250.0
+    assert 0 <= float(metrics_payload["estimated_cost_saved_inr"]) <= 11250.0
 
 
 def test_format_agent_continues_if_metrics_fails(mocker):
@@ -477,3 +509,90 @@ def test_compliance_agent_parse_failure_fails_closed(mocker, minimal_content_sta
     assert isinstance(result["compliance_feedback"], list)
     assert len(result["compliance_feedback"]) >= 1
     assert result["compliance_feedback"][0].get("rule_id") == "SYSTEM_PARSE"
+
+
+def test_format_agent_prioritizes_best_channel_in_selected_output_options(mocker):
+    mocker.patch(
+        "api.agents.format_agent.call_llm",
+        return_value=json.dumps(
+            {
+                "blog_html": "<article>Blog</article>",
+                "faq_html": "<section><h2>FAQ</h2></section>",
+                "publisher_brief": "Publisher note",
+                "twitter_thread": ["1/1 tweet"],
+                "linkedin_post": "LinkedIn post",
+                "whatsapp_message": "WhatsApp message",
+            }
+        ),
+    )
+    mocker.patch("api.agents.format_agent.write_pipeline_outputs", return_value=None)
+    mocker.patch("api.agents.format_agent.write_audit_log", return_value=None)
+    mocker.patch("api.agents.format_agent.update_run_status", return_value=None)
+    mocker.patch("api.agents.format_agent.get_recent_corrections", return_value=[])
+    mocker.patch("api.agents.format_agent.save_pipeline_metrics", return_value=None)
+
+    result = run_format_agent(_minimal_format_state())
+
+    summary = json.loads(result["audit_log"][-1]["output_summary"])
+    assert summary["selected_output_options"][0] == "twitter"
+
+
+def test_format_agent_builds_hindi_whatsapp_variant(mocker):
+    mocker.patch(
+        "api.agents.format_agent.call_llm",
+        return_value=json.dumps(
+            {
+                "blog_html": "<article>Blog</article>",
+                "faq_html": "<section><h2>FAQ</h2></section>",
+                "publisher_brief": "Publisher note",
+                "twitter_thread": ["1/1 tweet"],
+                "linkedin_post": "LinkedIn post",
+                "whatsapp_message": "WhatsApp message",
+            }
+        ),
+    )
+    write_outputs = mocker.patch("api.agents.format_agent.write_pipeline_outputs", return_value=None)
+    mocker.patch("api.agents.format_agent.write_audit_log", return_value=None)
+    mocker.patch("api.agents.format_agent.update_run_status", return_value=None)
+    mocker.patch("api.agents.format_agent.get_recent_corrections", return_value=[])
+    mocker.patch("api.agents.format_agent.save_pipeline_metrics", return_value=None)
+
+    run_format_agent(_minimal_format_state())
+
+    _, write_kwargs = write_outputs.call_args
+    assert "whatsapp_hi_message" in write_kwargs["outputs"]
+    assert write_kwargs["outputs"]["whatsapp_hi_message"]
+
+
+def test_intake_agent_derives_best_channel_from_engagement_data(mocker):
+    mocker.patch(
+        "api.agents.intake_agent.call_llm",
+        return_value=json.dumps(
+            {
+                "format": "multi_platform_pack",
+                "tone": "authoritative",
+                "word_count": 600,
+                "key_messages": ["one"],
+                "channels": ["blog", "twitter", "linkedin", "whatsapp"],
+                "languages": ["en", "hi"],
+                "compliance_flags": [],
+                "best_channel": "",
+                "strategy_recommendation": "Shift mix to channels with higher engagement.",
+                "content_calendar": [{"week": 1, "items": []}],
+            }
+        ),
+    )
+
+    state = {
+        "brief": {"topic": "Performance pivot brief"},
+        "engagement_data": {
+            "twitter": {"avg_views": 5000, "engagement_rate": 0.09},
+            "blog": {"avg_views": 900, "engagement_rate": 0.02},
+        },
+        "output_format": "multi_platform_pack",
+        "audit_log": [],
+    }
+
+    result = run_intake_agent(state)
+
+    assert result["strategy"]["best_channel"] == "twitter"

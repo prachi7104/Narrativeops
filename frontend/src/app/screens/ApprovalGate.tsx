@@ -630,6 +630,14 @@ export function ApprovalGate() {
             {metrics ? (
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
+                  <span className="text-text-secondary">Measured runtime</span>
+                  <span className="text-text-primary font-medium">{metrics.actual_duration_display}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">Manual baseline</span>
+                  <span className="text-text-primary font-medium">{metrics.baseline_manual_hours} hours</span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-text-secondary">Time saved</span>
                   <span className="text-text-primary font-medium">{metrics.time_saved_display}</span>
                 </div>

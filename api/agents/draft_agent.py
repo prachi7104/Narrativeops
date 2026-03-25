@@ -88,6 +88,8 @@ def run_draft_agent(state: ContentState) -> dict:
     content_category = str(state.get("content_category") or "general").strip() or "general"
     output_format = _get_output_format(state)
     format_guidelines = _get_format_guidelines(output_format)
+    strategy_recommendation = str(strategy.get("strategy_recommendation") or "").strip()
+    best_channel = str(strategy.get("best_channel") or "").strip()
 
     recent_corrections: list[dict] = []
     try:
@@ -140,6 +142,11 @@ Return ONLY the complete revised draft. No explanation."""
 
         user_prompt += "Do not change any other sentence. Return the complete revised draft with ##INTRO, ##BODY, ##CONCLUSION markers."
 
+        if strategy_recommendation:
+            user_prompt += f"\n\nStrategy recommendation: {strategy_recommendation}"
+        if best_channel:
+            user_prompt += f"\nPreferred channel for downstream packaging: {best_channel}"
+
         if correction_context:
             user_prompt = correction_context + "\n\n" + user_prompt
 
@@ -187,6 +194,11 @@ Return ONLY the article text with section markers. No explanation."""
             user_prompt += "\n"
 
         user_prompt += f"Write a {strategy.get('word_count', 600)}-word {strategy.get('format', 'article')} article."
+
+        if strategy_recommendation:
+            user_prompt += f"\n\nStrategy recommendation: {strategy_recommendation}"
+        if best_channel:
+            user_prompt += f"\nPreferred channel for downstream packaging: {best_channel}"
 
         action = "drafted"
 

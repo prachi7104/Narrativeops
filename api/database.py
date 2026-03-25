@@ -61,6 +61,21 @@ def create_run(run_id: str, brief: dict) -> None:
     return None
 
 
+def get_run(run_id: str) -> dict | None:
+    """Fetch a pipeline run by ID."""
+    client = get_supabase_client()
+    if client is None:
+        return None
+
+    try:
+        response = client.table("pipeline_runs").select("*").eq("id", run_id).limit(1).execute()
+        rows = response.data or []
+        return rows[0] if rows else None
+    except Exception as exc:
+        logger.exception("Failed to fetch run %s: %s", run_id, exc)
+        return None
+
+
 def update_run_status(run_id: str, status: str) -> None:
     """Update status in pipeline_runs for the given run_id."""
     client = get_supabase_client()
@@ -168,6 +183,17 @@ def write_pipeline_outputs(run_id: str, outputs: dict, localized_hi: str) -> Non
                     "channel": "whatsapp",
                     "language": "en",
                     "content": whatsapp_message,
+                }
+            )
+
+        whatsapp_hi_message = str(outputs.get("whatsapp_hi_message", "") or "").strip()
+        if whatsapp_hi_message:
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "channel": "whatsapp",
+                    "language": "hi",
+                    "content": whatsapp_hi_message,
                 }
             )
 

@@ -18,6 +18,9 @@ export interface PipelineMetrics {
   run_id: string;
   total_duration_ms: number;
   total_duration_display: string;
+  actual_duration_ms: number;
+  actual_duration_display: string;
+  baseline_manual_hours: number;
   estimated_hours_saved: number;
   time_saved_display: string;
   estimated_cost_saved_inr: number;

@@ -91,6 +91,33 @@ async def test_outputs_endpoint(mocker):
 
 
 @pytest.mark.asyncio
+async def test_status_endpoint_returns_run_status(mocker):
+    mocker.patch(
+        "api.main.database.get_run",
+        return_value={"id": "test-run-id", "status": "awaiting_approval"},
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/pipeline/test-run-id/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["run_id"] == "test-run-id"
+    assert body["status"] == "awaiting_approval"
+    assert body["pipeline_status"] == "awaiting_approval"
+
+
+@pytest.mark.asyncio
+async def test_status_endpoint_returns_404_when_missing(mocker):
+    mocker.patch("api.main.database.get_run", return_value=None)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/pipeline/missing/status")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_audit_endpoint(mocker):
     mock_events = [
         {"agent_name": "intake_agent", "action": "planned"},

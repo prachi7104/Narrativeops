@@ -107,9 +107,10 @@ describe('MyPipelines - B9 API Integration', () => {
       </MemoryRouter>,
     );
 
-    // Should show empty state even on error
+    // Should show service-unavailable warning on error
     await waitFor(() => {
-      expect(screen.getByText('No pipelines found')).toBeInTheDocument();
+      expect(screen.getByText('Service Temporarily Unavailable')).toBeInTheDocument();
+      expect(screen.getByText('Unable to load pipelines. Service may be temporarily unavailable.')).toBeInTheDocument();
     });
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
