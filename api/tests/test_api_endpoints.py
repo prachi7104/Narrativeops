@@ -4,14 +4,16 @@ from types import SimpleNamespace
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from api.main import SSE_QUEUES, app
+from api.main import SSE_QUEUES, SSE_TERMINAL_EVENTS, app
 
 
 @pytest.fixture(autouse=True)
 def clear_sse_queues():
     SSE_QUEUES.clear()
+    SSE_TERMINAL_EVENTS.clear()
     yield
     SSE_QUEUES.clear()
+    SSE_TERMINAL_EVENTS.clear()
 
 
 @pytest.mark.asyncio
@@ -52,6 +54,19 @@ async def test_stream_returns_404_for_unknown_run():
         response = await client.get("/api/pipeline/nonexistent-id/stream")
 
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_stream_replays_terminal_event_when_queue_is_missing():
+    SSE_TERMINAL_EVENTS["run-123"] = {"type": "pipeline_complete", "run_id": "run-123"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/pipeline/run-123/stream")
+
+    assert response.status_code == 200
+    assert "pipeline_complete" in response.text
+    assert "run-123" in response.text
+    assert "run-123" not in SSE_TERMINAL_EVENTS
 
 
 @pytest.mark.asyncio

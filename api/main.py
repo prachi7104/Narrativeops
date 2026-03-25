@@ -33,6 +33,7 @@ from api.graph.state import ContentState  # noqa: E402
 logger = logging.getLogger(__name__)
 
 SSE_QUEUES: dict[str, asyncio.Queue] = {}
+SSE_TERMINAL_EVENTS: dict[str, dict] = {}
 APP_EVENT_LOOP: asyncio.AbstractEventLoop | None = None
 
 
@@ -94,6 +95,10 @@ class DiffRequest(BaseModel):
 
 
 def _emit_sse(run_id: str, event: dict) -> None:
+    event_type = str(event.get("type") or "")
+    if event_type in {"human_required", "error", "pipeline_complete"}:
+        SSE_TERMINAL_EVENTS[run_id] = event
+
     if APP_EVENT_LOOP is None:
         logger.error("Cannot emit SSE event; app event loop is not initialized")
         return
@@ -160,9 +165,9 @@ def _extract_pipeline_status(payload: object) -> str | None:
 def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None) -> None:
     try:
         # Lazy import to avoid circular dependencies at module import time.
-        from api.graph.pipeline import build_pipeline
+        from api.graph.pipeline import get_pipeline
 
-        pipeline = build_pipeline()
+        pipeline = get_pipeline()
         config = {"configurable": {"thread_id": run_id}}
 
         requested_options = brief.get("output_options", [])
@@ -278,18 +283,48 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
             },
         )
     finally:
-        # A3: Clean up SSE queue after pipeline thread completes
-        SSE_QUEUES.pop(run_id, None)
+        # Stream lifecycle owns cleanup so terminal events remain readable by the client.
+        pass
 
 
 def _resume_pipeline_sync(run_id: str) -> None:
     """Resume graph from checkpoint — runs in a thread pool to avoid blocking the event loop."""
-    from api.graph.pipeline import build_pipeline
+    from api.graph.pipeline import get_pipeline
 
-    pipeline = build_pipeline()
+    pipeline = get_pipeline()
     config = {"configurable": {"thread_id": run_id}}
+
+    checkpoint_state = pipeline.get_state(config)
+    values = getattr(checkpoint_state, "values", {}) or {}
+    current_status = str(values.get("pipeline_status") or "")
+
+    if current_status != "awaiting_approval":
+        logger.info(
+            "Skipping resume for run_id=%s because status=%s",
+            run_id,
+            current_status,
+        )
+        return
+
     pipeline.update_state(config, {"human_approved": True})
-    list(pipeline.stream(None, config, stream_mode="updates"))
+
+    for update in pipeline.stream(None, config, stream_mode="updates"):
+        _emit_sse(
+            run_id,
+            {
+                "type": "update",
+                "run_id": run_id,
+                "data": update,
+            },
+        )
+
+    _emit_sse(
+        run_id,
+        {
+            "type": "pipeline_complete",
+            "run_id": run_id,
+        },
+    )
 
 
 @app.get("/health")
@@ -341,6 +376,19 @@ async def run_pipeline(request: RunRequest) -> dict:
 @app.get("/api/pipeline/{run_id}/stream")
 async def stream_pipeline(run_id: str) -> StreamingResponse:
     queue = SSE_QUEUES.get(run_id)
+
+    if queue is None and run_id in SSE_TERMINAL_EVENTS:
+        terminal_event = SSE_TERMINAL_EVENTS.pop(run_id)
+
+        async def terminal_event_generator():
+            yield f"data: {json.dumps(terminal_event)}\n\n"
+
+        return StreamingResponse(
+            terminal_event_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     if queue is None:
         raise HTTPException(status_code=404, detail="run_id not found")
 
@@ -360,6 +408,7 @@ async def stream_pipeline(run_id: str) -> StreamingResponse:
         finally:
             # A3: Clean up SSE queue when stream disconnects
             SSE_QUEUES.pop(run_id, None)
+            SSE_TERMINAL_EVENTS.pop(run_id, None)
 
     return StreamingResponse(
         event_generator(),
@@ -380,14 +429,14 @@ async def approve_pipeline(run_id: str, request: ApproveRequest) -> dict:
 
         # A2: Run blocking pipeline resume in a thread-pool executor
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _resume_pipeline_sync, run_id)
-
-        queue = SSE_QUEUES.get(run_id)
-        if queue is not None and APP_EVENT_LOOP is not None:
-            asyncio.run_coroutine_threadsafe(
-                queue.put({"type": "pipeline_complete", "run_id": run_id}),
-                APP_EVENT_LOOP,
-            )
+        try:
+            await loop.run_in_executor(None, _resume_pipeline_sync, run_id)
+        except Exception as exc:
+            logger.exception("Failed to resume pipeline for run_id=%s: %s", run_id, exc)
+            raise HTTPException(
+                status_code=409,
+                detail="Unable to resume pipeline checkpoint for approval",
+            ) from exc
         return {"status": "approved"}
 
     database.update_run_status(run_id, "rejected")

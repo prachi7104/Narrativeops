@@ -144,6 +144,16 @@ def test_b4_approve_endpoint_resumes_pipeline():
     assert checkpointer is not None, "Pipeline should have checkpointer for resume"
 
 
+def test_b4_shared_pipeline_singleton_for_resume():
+    """Verify run and approve paths can share the same compiled pipeline instance."""
+    from api.graph.pipeline import get_pipeline
+
+    pipeline_1 = get_pipeline()
+    pipeline_2 = get_pipeline()
+
+    assert pipeline_1 is pipeline_2
+
+
 # B2+B5: Test SSE event format
 def test_b2_b5_sse_event_has_data_field():
     """
