@@ -203,6 +203,9 @@ export async function getSettingsRules(): Promise<SettingsRulesResponse> {
 export async function reloadSettingsRules(): Promise<{ status: string; count: number; source: string }> {
   const endpoint = `${BASE_URL}/api/settings/rules/reload`;
   const response = await fetch(endpoint, { method: "POST" });
+  if (isNotFound(response)) {
+    return { status: "unavailable", count: 0, source: "unavailable" };
+  }
   await assertOk(response, endpoint);
   return (await response.json()) as { status: string; count: number; source: string };
 }

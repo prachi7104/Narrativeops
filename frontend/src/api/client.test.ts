@@ -2,6 +2,7 @@ import {
   captureDiff,
   getOutputs,
   listRuns,
+  reloadSettingsRules,
   startPipeline,
   uploadBrandGuide,
 } from './client';
@@ -126,5 +127,20 @@ describe('api/client', () => {
     expect(runs).toHaveLength(1);
     expect(runs[0].id).toBe('run-1');
     expect(runs[0].compliance_verdict).toBe('PASS');
+  });
+
+  it('reloadSettingsRules returns unavailable when endpoint is missing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('Not Found', {
+        status: 404,
+        statusText: 'Not Found',
+      }),
+    );
+
+    const result = await reloadSettingsRules();
+
+    expect(result.status).toBe('unavailable');
+    expect(result.count).toBe(0);
+    expect(result.source).toBe('unavailable');
   });
 });
