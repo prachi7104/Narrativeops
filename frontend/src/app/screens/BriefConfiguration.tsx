@@ -15,49 +15,48 @@ import {
 
 import { startPipeline, uploadBrandGuide } from '../../api/client';
 
-const CHANNELS = [
-  { id: 'blog', label: 'Blog', icon: FileText },
-  { id: 'twitter', label: 'Twitter', icon: Twitter },
-  { id: 'linkedin', label: 'LinkedIn', icon: Linkedin },
-  { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
-];
-
 const TONES = ['Authoritative', 'Accessible', 'Analytical', 'Urgent'];
 
-const OUTPUT_FORMATS = [
-  {
-    id: 'et_op_ed',
-    label: 'ET Op-Ed',
-    description: 'Sharp thesis, evidence-led argument, 700-900 words.',
-  },
-  {
-    id: 'et_explainer_box',
-    label: 'ET Explainer Box (Q&A)',
-    description: 'Question-answer structure with concise data pointers.',
-  },
+const PUBLISH_OPTIONS = [
   {
     id: 'blog',
     label: 'Blog',
+    icon: FileText,
     description: 'Long-form blog output view.',
+  },
+  {
+    id: 'twitter',
+    label: 'Twitter',
+    icon: Twitter,
+    description: 'Thread-ready X/Twitter output.',
   },
   {
     id: 'linkedin',
     label: 'LinkedIn',
+    icon: Linkedin,
     description: 'Professional social post output.',
   },
   {
     id: 'whatsapp',
     label: 'WhatsApp',
+    icon: MessageCircle,
     description: 'Compact WhatsApp summary output.',
   },
   {
-    id: 'twitter',
-    label: 'Twitter',
-    description: 'Thread-ready X/Twitter output.',
+    id: 'et_op_ed',
+    label: 'ET Op-Ed',
+    icon: FileText,
+    description: 'Sharp thesis, evidence-led argument, 700-900 words.',
+  },
+  {
+    id: 'et_explainer_box',
+    label: 'ET Explainer Box (Q&A)',
+    icon: FileText,
+    description: 'Question-answer structure with concise data pointers.',
   },
 ] as const;
 
-type OutputOption = (typeof OUTPUT_FORMATS)[number]['id'];
+type OutputOption = (typeof PUBLISH_OPTIONS)[number]['id'];
 
 const AGENT_STEPS = [
   'Intake Analysis',
@@ -80,15 +79,9 @@ export function BriefConfiguration() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
-  const [selectedChannels, setSelectedChannels] = useState<string[]>(['blog', 'twitter']);
+  const [selectedChannels, setSelectedChannels] = useState<OutputOption[]>(['blog', 'twitter']);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['english']);
   const [selectedTone, setSelectedTone] = useState('Accessible');
-  const [selectedOutputOptions, setSelectedOutputOptions] = useState<OutputOption[]>([
-    'blog',
-    'linkedin',
-    'whatsapp',
-    'twitter',
-  ]);
   const [engagementExpanded, setEngagementExpanded] = useState(false);
   const [engagementData, setEngagementData] = useState('{\n  "scenario": 3,\n  "metrics": {\n    "engagement_rate": 0.45\n  }\n}');
 
@@ -122,9 +115,11 @@ export function BriefConfiguration() {
     }
   };
 
-  const toggleChannel = (id: string) => {
+  const toggleChannel = (id: OutputOption) => {
     setSelectedChannels((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+      prev.includes(id)
+        ? (prev.length === 1 ? prev : prev.filter((c) => c !== id))
+        : [...prev, id]
     );
   };
 
@@ -149,11 +144,6 @@ export function BriefConfiguration() {
     setRunError(null);
 
     try {
-      const hasLongForm = selectedOutputOptions.includes('et_op_ed') || selectedOutputOptions.includes('et_explainer_box');
-      const outputOptionsToSend = hasLongForm
-        ? selectedOutputOptions
-        : ['blog', ...selectedOutputOptions.filter((item) => item !== 'blog')];
-
       const contentCategory = detectCategory(brief);
       const targetLanguages: string[] = ['en'];
       if (selectedLanguages.includes('hindi')) targetLanguages.push('hi');
@@ -163,7 +153,7 @@ export function BriefConfiguration() {
           topic: brief.slice(0, 100),
           description: brief,
           content_category: contentCategory,
-          output_options: outputOptionsToSend,
+          output_options: selectedChannels,
           tone: selectedTone.toLowerCase(),
           target_languages: targetLanguages,
         },
@@ -283,7 +273,7 @@ export function BriefConfiguration() {
               Publish to
             </label>
             <div className="grid grid-cols-2 gap-3">
-              {CHANNELS.map((channel) => {
+              {PUBLISH_OPTIONS.map((channel) => {
                 const Icon = channel.icon;
                 const isSelected = selectedChannels.includes(channel.id);
                 return (
@@ -298,9 +288,14 @@ export function BriefConfiguration() {
                   >
                     <div className="flex items-center gap-3">
                       <Icon className={`w-6 h-6 ${isSelected ? 'text-accent-primary' : 'text-text-secondary'}`} />
-                      <span className={`text-sm ${isSelected ? 'text-text-primary' : 'text-text-secondary'}`}>
-                        {channel.label}
-                      </span>
+                      <div className="text-left">
+                        <div className={`text-sm ${isSelected ? 'text-text-primary' : 'text-text-secondary'}`}>
+                          {channel.label}
+                        </div>
+                        <div className="text-[11px] text-text-tertiary hidden md:block">
+                          {channel.description}
+                        </div>
+                      </div>
                     </div>
                     <div
                       className={`w-10 h-6 rounded-full transition-colors ${
@@ -317,6 +312,9 @@ export function BriefConfiguration() {
                 );
               })}
             </div>
+            <p className="mt-2 text-xs text-text-tertiary">
+              Select one or more outputs. This controls generated output tabs.
+            </p>
           </div>
 
           {/* Section 3 - Languages */}
@@ -370,46 +368,7 @@ export function BriefConfiguration() {
             </div>
           </div>
 
-          {/* Section 5 - Output options */}
-          <div>
-            <label className="block text-text-primary mb-3 text-sm font-medium">
-              Output options
-            </label>
-            <div className="space-y-3">
-              {OUTPUT_FORMATS.map((item) => {
-                const isSelected = selectedOutputOptions.includes(item.id);
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setSelectedOutputOptions((prev) => {
-                        if (prev.includes(item.id)) {
-                          if (prev.length === 1) return prev;
-                          return prev.filter((option) => option !== item.id);
-                        }
-                        return [...prev, item.id];
-                      });
-                    }}
-                    className={`w-full text-left rounded-md border p-4 transition-colors ${
-                      isSelected
-                        ? 'border-accent-primary bg-accent-primary/10'
-                        : 'border-border-default bg-bg-surface hover:border-text-secondary'
-                    }`}
-                  >
-                    <p className={`text-sm font-medium ${isSelected ? 'text-text-primary' : 'text-text-secondary'}`}>
-                      {item.label}
-                    </p>
-                    <p className="mt-1 text-xs text-text-tertiary">{item.description}</p>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-2 text-xs text-text-tertiary">
-              Pick one or more. Selected outputs will appear as separate tabs in Review.
-            </p>
-          </div>
-
-          {/* Section 6 - Engagement Data (Collapsible) */}
+          {/* Section 5 - Engagement Data (Collapsible) */}
           <div>
             <button
               onClick={() => setEngagementExpanded(!engagementExpanded)}
@@ -480,7 +439,7 @@ export function BriefConfiguration() {
           {/* Channel Output Placeholders */}
           <div className="space-y-3">
             {selectedChannels.map((channelId) => {
-              const channel = CHANNELS.find((c) => c.id === channelId);
+              const channel = PUBLISH_OPTIONS.find((c) => c.id === channelId);
               if (!channel) return null;
               const Icon = channel.icon;
               return (
