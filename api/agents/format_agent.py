@@ -123,7 +123,8 @@ def run_format_agent(state: ContentState) -> dict:
     schema_lines.append("}")
 
     requested = ", ".join(output_options)
-    schema_block = "\n".join(schema_lines)
+    prop_lines = schema_lines[1:-1]
+    schema_block = "{\n" + ",\n".join(prop_lines) + "\n}" if prop_lines else "{}"
 
     system_prompt = f"""You are a content formatting specialist for Economic Times.
 Format the compliance-passed draft into ONLY the requested output variants.
@@ -210,9 +211,9 @@ Rules:
 
     try:
         total_duration_ms = sum(
-            int(entry.get("duration_ms") or 0) for entry in state.get("audit_log", [])
+            int(entry.get("duration_ms") or 0) for entry in full_audit_log
         )
-        agent_count = len([entry for entry in state.get("audit_log", []) if entry.get("agent")])
+        agent_count = len([entry for entry in full_audit_log if entry.get("agent")])
 
         category = str(state.get("content_category") or "general").strip() or "general"
         recent = get_recent_corrections(category, limit=10)

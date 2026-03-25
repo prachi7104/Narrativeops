@@ -92,6 +92,9 @@ export interface RunSummary {
   estimated_hours_saved?: number;
   estimated_cost_saved_inr?: number;
   trend_sources_used?: number;
+  output_options?: string[];
+  compliance_verdict?: string;
+  has_hindi?: boolean;
 }
 
 export interface SettingsRule {

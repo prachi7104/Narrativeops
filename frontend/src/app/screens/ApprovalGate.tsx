@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import { Twitter, Linkedin, MessageCircle, FileText, Edit3, Check, X, ArrowLeft } from 'lucide-react';
+import confetti from 'canvas-confetti';
+import { motion } from 'motion/react';
 
-import { getOutputs, getMetrics, captureDiff, approvePipeline, getAuditTrail } from '../api/client';
+import { getOutputs, getMetrics, captureDiff, approvePipeline, rejectPipeline, getAuditTrail } from '../api/client';
 import type {
   AuditEvent,
   ComplianceAnnotation,
@@ -156,7 +158,7 @@ export function ApprovalGate() {
     content.hindi,
   ].some((value) => (value || '').trim().length > 0);
 
-  const loadRunData = async (withSpinner = false) => {
+  const loadRunData = useCallback(async (withSpinner = false) => {
     if (!id) return;
     if (withSpinner) {
       setIsRefreshing(true);
@@ -195,11 +197,11 @@ export function ApprovalGate() {
         setIsRefreshing(false);
       }
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     void loadRunData();
-  }, [id]);
+  }, [loadRunData]);
 
   const complianceAnnotations = (complianceSummary?.annotations || []) as ComplianceAnnotation[];
   const groupedAnnotations = complianceAnnotations.reduce(
@@ -276,9 +278,20 @@ export function ApprovalGate() {
     if (!id) return;
     try {
       await approvePipeline(id);
-      navigate('/pipelines');
+      confetti({ particleCount: 80, spread: 70, colors: ['#7C3AED', '#06B6D4', '#10B981'] });
+      setTimeout(() => navigate('/pipelines'), 1200);
     } catch (err) {
       console.error('Approve failed:', err);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!id) return;
+    try {
+      await rejectPipeline(id);
+      navigate('/pipelines');
+    } catch (err) {
+      console.error('Reject failed:', err);
     }
   };
 
@@ -471,7 +484,12 @@ export function ApprovalGate() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-primary">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+      className="min-h-screen bg-bg-primary"
+    >
       {/* Header */}
       <div className="border-b border-border-default">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 md:py-6">
@@ -498,7 +516,7 @@ export function ApprovalGate() {
                 <span className="hidden md:inline">Approve & publish</span>
                 <span className="md:hidden">Approve</span>
               </button>
-              <button className="flex items-center gap-2 px-4 py-2.5 text-text-secondary hover:text-error transition-colors">
+              <button onClick={handleReject} className="flex items-center gap-2 px-4 py-2.5 text-text-secondary hover:text-error transition-colors">
                 <X className="w-4 h-4" />
                 <span className="hidden md:inline">Reject</span>
               </button>
@@ -704,20 +722,20 @@ export function ApprovalGate() {
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-text-secondary">Total time</span>
-                <span className="text-text-primary font-medium">2m 34s</span>
+                <span className="text-text-primary font-medium">{metrics?.total_duration_display ?? '—'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-secondary">Agents used</span>
-                <span className="text-text-primary font-medium">7</span>
+                <span className="text-text-secondary">Compliance iterations</span>
+                <span className="text-text-primary font-medium">{metrics?.compliance_iterations ?? '—'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-secondary">Disclaimer</span>
-                <span className="text-success font-medium">Added</span>
+                <span className="text-text-secondary">Trend sources</span>
+                <span className="text-text-primary font-medium">{metrics?.trend_sources_used ?? 0}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

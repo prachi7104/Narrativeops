@@ -8,6 +8,7 @@ import logging
 import sys
 import threading
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
@@ -31,7 +32,23 @@ from api.graph.state import ContentState  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="NarrativeOps API")
+SSE_QUEUES: dict[str, asyncio.Queue] = {}
+APP_EVENT_LOOP: asyncio.AbstractEventLoop | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application startup/shutdown lifecycle."""
+    from api.data.seed_default_rules import seed_default_rules
+
+    seed_default_rules()
+    global APP_EVENT_LOOP
+    APP_EVENT_LOOP = asyncio.get_running_loop()
+    logger.info("NarrativeOps API starting")
+    yield
+
+
+app = FastAPI(title="NarrativeOps API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,9 +62,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-SSE_QUEUES: dict[str, asyncio.Queue] = {}
-APP_EVENT_LOOP: asyncio.AbstractEventLoop | None = None
 
 
 class RunRequest(BaseModel):
@@ -76,16 +90,6 @@ class DiffRequest(BaseModel):
     original_text: str
     corrected_text: str
     content_category: str
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    from api.data.seed_default_rules import seed_default_rules
-
-    seed_default_rules()
-    global APP_EVENT_LOOP
-    APP_EVENT_LOOP = asyncio.get_running_loop()
-    logger.info("NarrativeOps API starting")
 
 
 def _emit_sse(run_id: str, event: dict) -> None:
@@ -194,6 +198,7 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
             "content_category": str(brief.get("content_category", "general") or "general"),
             "output_format": output_format,
             "output_options": output_options,
+            "target_languages": brief.get("target_languages", ["en", "hi"]),
             "strategy": {},
             "trend_context": "",
             "trend_sources": [],
@@ -271,6 +276,19 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
                 "message": str(exc),
             },
         )
+    finally:
+        # A3: Clean up SSE queue after pipeline thread completes
+        SSE_QUEUES.pop(run_id, None)
+
+
+def _resume_pipeline_sync(run_id: str) -> None:
+    """Resume graph from checkpoint — runs in a thread pool to avoid blocking the event loop."""
+    from api.graph.pipeline import build_pipeline
+
+    pipeline = build_pipeline()
+    config = {"configurable": {"thread_id": run_id}}
+    pipeline.update_state(config, {"human_approved": True})
+    list(pipeline.stream(None, config, stream_mode="updates"))
 
 
 @app.get("/health")
@@ -283,7 +301,8 @@ async def upload_brand_guide(
     file: UploadFile = File(...),  # noqa: B008
     session_id: str = Form(...),  # noqa: B008
 ) -> dict:
-    if file.content_type != "application/pdf":
+    # A4: robust content_type check
+    if str(file.content_type or "").lower().split(";")[0].strip() != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
 
     pdf_bytes = await file.read()
@@ -327,15 +346,19 @@ async def stream_pipeline(run_id: str) -> StreamingResponse:
     async def event_generator():
         terminal_types = {"human_required", "error", "pipeline_complete"}
 
-        while True:
-            try:
-                event = await asyncio.wait_for(queue.get(), timeout=120)
-                yield f"data: {json.dumps(event)}\n\n"
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=120)
+                    yield f"data: {json.dumps(event)}\n\n"
 
-                if event.get("type") in terminal_types:
-                    break
-            except TimeoutError:
-                yield 'data: {"type":"heartbeat"}\n\n'
+                    if event.get("type") in terminal_types:
+                        break
+                except TimeoutError:
+                    yield 'data: {"type":"heartbeat"}\n\n'
+        finally:
+            # A3: Clean up SSE queue when stream disconnects
+            SSE_QUEUES.pop(run_id, None)
 
     return StreamingResponse(
         event_generator(),
@@ -354,19 +377,9 @@ async def approve_pipeline(run_id: str, request: ApproveRequest) -> dict:
     if request.approved:
         database.approve_run(run_id)
 
-        # Resume graph from checkpoint with human approval signal.
-        from api.graph.pipeline import build_pipeline
-
-        pipeline = build_pipeline()
-        config = {"configurable": {"thread_id": run_id}}
-
-        # Update state with human_approved and resume from the interrupted node
-        # LangGraph requires update_state followed by invoke to resume
-        pipeline.update_state(config, {"human_approved": True})
-
-        # Resume the pipeline from the interrupt point
-        for _update in pipeline.stream(None, config, stream_mode="updates"):
-            pass  # run to completion synchronously
+        # A2: Run blocking pipeline resume in a thread-pool executor
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _resume_pipeline_sync, run_id)
 
         queue = SSE_QUEUES.get(run_id)
         if queue is not None and APP_EVENT_LOOP is not None:

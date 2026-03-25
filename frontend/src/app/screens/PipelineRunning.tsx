@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useLocation } from 'react-router';
 import { StopCircle } from 'lucide-react';
+import { motion } from 'motion/react';
 
 import { usePipelineSSE, AGENT_ID_MAP } from '../../hooks/usePipelineSSE';
 
@@ -34,13 +35,20 @@ const INITIAL_AGENTS: Agent[] = [
 export function PipelineRunning() {
   const { id: runId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const contentCategory = (location.state as { category?: string } | null)?.category || 'general';
   const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
-  const [contentCategory, setContentCategory] = useState('general');
   const logEndRef = useRef<HTMLDivElement>(null);
   const logIdCounter = useRef(1);
+
+  // Timer — D1 fix
+  useEffect(() => {
+    const interval = setInterval(() => setElapsedTime((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -50,14 +58,6 @@ export function PipelineRunning() {
   const onAgentUpdate = useCallback((agentName: string, eventData: Record<string, unknown>) => {
     const agentId = AGENT_ID_MAP[agentName];
     if (!agentId) return;
-
-    // Extract content_category from intake_agent
-    if (agentName === 'intake_agent') {
-      const brief = eventData.brief as { content_category?: string } | undefined;
-      if (brief?.content_category) {
-        setContentCategory(brief.content_category);
-      }
-    }
 
     setAgents((prev) => prev.map((agent) => {
       if (agent.id === agentId) {
@@ -118,7 +118,11 @@ export function PipelineRunning() {
     }]);
   }, []);
 
-  usePipelineSSE(runId || null, onAgentUpdate, onHumanRequired, onError);
+  const onComplete = useCallback((id: string) => {
+    navigate(`/audit/${id}`);
+  }, [navigate]);
+
+  usePipelineSSE(runId || null, onAgentUpdate, onHumanRequired, onError, onComplete);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -177,7 +181,12 @@ export function PipelineRunning() {
   };
 
   return (
-    <div className="min-h-screen bg-bg-primary flex flex-col">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+      className="min-h-screen bg-bg-primary flex flex-col"
+    >
       {/* Top Bar */}
       <div className="h-16 border-b border-border-default px-4 md:px-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -297,6 +306,6 @@ export function PipelineRunning() {
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

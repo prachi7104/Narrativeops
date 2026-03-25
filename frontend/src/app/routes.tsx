@@ -7,6 +7,7 @@ import { AuditTrail } from "./screens/AuditTrail";
 import { MyPipelines } from "./screens/MyPipelines";
 import { Gallery } from "./screens/Gallery";
 import { Settings } from "./screens/Settings";
+import { BrandHub } from "./screens/BrandHub";
 import { AppLayout } from "./components/AppLayout";
 
 function LayoutRoute() {
@@ -53,6 +54,10 @@ export const appRoutes = [
       {
         path: "settings",
         Component: Settings,
+      },
+      {
+        path: "brand-hub",
+        Component: BrandHub,
       },
     ],
   },

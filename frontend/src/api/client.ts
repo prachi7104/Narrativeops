@@ -25,7 +25,7 @@ async function assertOk(response: Response, endpoint: string): Promise<void> {
 }
 
 export async function startPipeline(
-  brief: { topic: string; description: string; content_category?: string },
+  brief: { topic: string; description: string; content_category?: string; output_options?: string[]; tone?: string; target_languages?: string[] },
   sessionId?: string,
   engagementData?: Record<string, unknown> | null,
 ): Promise<{ run_id: string; status: string }> {
@@ -72,6 +72,18 @@ export async function approvePipeline(runId: string): Promise<{ status: string }
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ approved: true }),
+  });
+
+  await assertOk(response, endpoint);
+  return (await response.json()) as { status: string };
+}
+
+export async function rejectPipeline(runId: string): Promise<{ status: string }> {
+  const endpoint = `${BASE_URL}/api/pipeline/${runId}/approve`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ approved: false }),
   });
 
   await assertOk(response, endpoint);

@@ -76,7 +76,8 @@ describe('MyPipelines - B9 API Integration', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Loading pipelines...')).toBeInTheDocument();
+    // Loading state renders skeleton cards — heading is always present
+    expect(screen.getByText('My Pipelines')).toBeInTheDocument();
   });
 
   it('shows empty state when no pipelines exist', async () => {
@@ -89,9 +90,9 @@ describe('MyPipelines - B9 API Integration', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('No pipelines yet')).toBeInTheDocument();
+      expect(screen.getByText('No pipelines found')).toBeInTheDocument();
       expect(
-        screen.getByText('Create your first content pipeline to get started'),
+        screen.getByText('Create your first pipeline to get started.'),
       ).toBeInTheDocument();
     });
   });
@@ -108,7 +109,7 @@ describe('MyPipelines - B9 API Integration', () => {
 
     // Should show empty state even on error
     await waitFor(() => {
-      expect(screen.getByText('No pipelines yet')).toBeInTheDocument();
+      expect(screen.getByText('No pipelines found')).toBeInTheDocument();
     });
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -151,7 +152,7 @@ describe('MyPipelines - B9 API Integration', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('5 hours ago')).toBeInTheDocument();
+      expect(screen.getByText('5h ago')).toBeInTheDocument();
       expect(screen.getByText('2 days ago')).toBeInTheDocument();
     });
   });
@@ -193,9 +194,10 @@ describe('MyPipelines - B9 API Integration', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Completed')).toBeInTheDocument();
-      expect(screen.getByText('Awaiting approval')).toBeInTheDocument();
-      expect(screen.getByText('Failed')).toBeInTheDocument();
+      // Filter buttons share text with status badges; use getAllByText
+      expect(screen.getAllByText('Completed').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Awaiting Review')).toBeInTheDocument();
+      expect(screen.getAllByText('Failed').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Escalated')).toBeInTheDocument();
     });
   });

@@ -3,10 +3,13 @@ Intake agent: Analyzes brief and creates content strategy.
 """
 
 import json
+import logging
 import time
 
 from api.graph.state import ContentState
 from api.llm import call_llm
+
+logger = logging.getLogger(__name__)
 
 
 def run_intake_agent(state: ContentState) -> dict:
@@ -87,7 +90,25 @@ Return ONLY the JSON object. No explanation, no markdown, no preamble."""
     cleaned_response = cleaned_response.strip()
 
     # Parse JSON
-    strategy = json.loads(cleaned_response)
+    try:
+        strategy = json.loads(cleaned_response)
+    except (json.JSONDecodeError, ValueError) as parse_exc:
+        logger.warning("Failed to parse intake strategy JSON: %s", parse_exc)
+        strategy = {
+            "format": enforced_format,
+            "tone": "authoritative",
+            "word_count": 600,
+            "key_messages": [],
+            "channels": ["blog", "twitter", "linkedin", "whatsapp"],
+            "languages": ["en", "hi"],
+            "compliance_flags": [],
+            "strategy_recommendation": None,
+            "content_calendar": None,
+        }
+
+    # F2: Override LLM-chosen tone with user-selected tone if provided
+    if brief.get("tone"):
+        strategy["tone"] = brief["tone"]
 
     # Build audit log entry
     audit_entry = {
@@ -95,7 +116,7 @@ Return ONLY the JSON object. No explanation, no markdown, no preamble."""
         "action": "analyzed_brief",
         "model": model,
         "duration_ms": duration_ms,
-        "output_summary": f"format={strategy.get('format')}, tone={strategy.get('tone')}, word_count={strategy.get('word_count')}"
+        "output_summary": f"format={strategy.get('format')}, tone={strategy.get('tone')}, word_count={strategy.get('word_count')}",
     }
 
     return {

@@ -25,6 +25,7 @@ interface ApiStatusItem {
 
 export function Settings() {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadingRules, setReloadingRules] = useState(false);
   const [rules, setRules] = useState<SettingsRulesResponse>({ rules: [], count: 0, source: 'unknown' });
   const [correctionsSummary, setCorrectionsSummary] = useState<CorrectionsSummaryResponse>({ summary: [], total: 0 });
@@ -49,6 +50,7 @@ export function Settings() {
       })
       .catch((err) => {
         console.error('Failed to load settings data', err);
+        setLoadError('Failed to load settings. Please check your connection and try again.');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -106,6 +108,11 @@ export function Settings() {
           <div className="flex items-center gap-2 text-sm text-text-secondary">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading settings...
+          </div>
+        ) : loadError ? (
+          <div className="flex items-center gap-3 rounded-md border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+            <AlertCircle className="h-5 w-5 shrink-0" />
+            <span>{loadError}</span>
           </div>
         ) : (
           <>

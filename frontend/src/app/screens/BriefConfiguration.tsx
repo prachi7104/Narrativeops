@@ -154,17 +154,23 @@ export function BriefConfiguration() {
         ? selectedOutputOptions
         : ['blog', ...selectedOutputOptions.filter((item) => item !== 'blog')];
 
+      const contentCategory = detectCategory(brief);
+      const targetLanguages: string[] = ['en'];
+      if (selectedLanguages.includes('hindi')) targetLanguages.push('hi');
+
       const result = await startPipeline(
         {
           topic: brief.slice(0, 100),
           description: brief,
-          content_category: detectCategory(brief),
+          content_category: contentCategory,
           output_options: outputOptionsToSend,
+          tone: selectedTone.toLowerCase(),
+          target_languages: targetLanguages,
         },
         sessionId,
         parsedEngagementData || null,
       );
-      navigate('/pipeline/' + result.run_id);
+      navigate('/pipeline/' + result.run_id, { state: { category: contentCategory } });
     } catch {
       setRunError('Failed to start pipeline. Please try again.');
     } finally {

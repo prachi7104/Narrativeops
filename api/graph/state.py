@@ -48,6 +48,7 @@ class ContentState(TypedDict):
     content_category: str
     output_format: str
     output_options: list[str]
+    target_languages: list[str]
     strategy: dict
     trend_context: str
     trend_sources: list[str]

@@ -15,6 +15,16 @@ def run_localization_agent(state: ContentState) -> dict:
     Returns:
         dict: State updates with localized_hi content
     """
+    # F3: Skip Hindi localization if user did not request it
+    target_languages = state.get("brief", {}).get("target_languages", ["en", "hi"])
+    if "hi" not in target_languages:
+        return {
+            "localized_hi": "",
+            "pipeline_status": "localization_skipped",
+            "audit_log": state.get("audit_log", [])
+            + [{"agent": "localization_agent", "action": "skipped_by_user"}],
+        }
+
     draft = state.get("draft", "")
 
     # Build comprehensive system prompt
