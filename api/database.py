@@ -1,4 +1,4 @@
-"""Database helpers for NarrativeOps Supabase persistence."""
+"""Database helpers for Lumina Supabase persistence."""
 
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { Brain } from 'lucide-react';
+import { Brain, RotateCw } from 'lucide-react';
 import { getStyleMemory } from '../api/client';
 import type { StyleMemoryResponse } from '../api/types';
 
@@ -9,16 +9,22 @@ export function BrandHub() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchStyleMemory = () => {
+    setLoading(true);
+    setError(null);
     getStyleMemory(50)
       .then((data) => {
         setStyleMemory(data);
       })
       .catch((err) => {
         console.error(err);
-        setError('Failed to load brand intelligence. Please try again.');
+        setError('Unable to load brand intelligence. Service may be temporarily unavailable.');
       })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchStyleMemory();
   }, []);
 
   return (
@@ -54,8 +60,21 @@ export function BrandHub() {
             ))}
           </div>
         ) : error ? (
-          <div className="rounded-xl border border-error/30 bg-error/10 px-5 py-4 text-sm text-error">
-            {error}
+          <div className="rounded-xl border border-warning/30 bg-warning/10 px-6 py-5 text-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-medium text-warning mb-1">Service Temporarily Unavailable</p>
+                <p className="text-text-secondary text-sm">{error}</p>
+              </div>
+              <button
+                onClick={fetchStyleMemory}
+                disabled={loading}
+                className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg bg-warning text-white hover:bg-warning/90 transition-colors disabled:opacity-60 text-sm font-medium"
+              >
+                <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                Retry
+              </button>
+            </div>
           </div>
         ) : !styleMemory || styleMemory.categories.length === 0 ? (
           <div className="card p-12 text-center">

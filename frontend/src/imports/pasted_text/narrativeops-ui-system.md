@@ -1,4 +1,4 @@
-Design a complete Figma UI system for NarrativeOps — an enterprise AI content
+Design a complete Figma UI system for Lumina — an enterprise AI content
 operations platform. The experience should feel like a premium B2B SaaS product:
 clean, spacious, confident, and immediately trustworthy.
 
@@ -59,7 +59,7 @@ SCREEN 1 — HOME / DASHBOARD
 Layout: 1440px wide, top navigation + content area
 
 Top navigation bar (64px height):
-  Left: NarrativeOps wordmark (white, 16px/600)
+  Left: Lumina wordmark (white, 16px/600)
   Center: nothing
   Right: "New pipeline" button (indigo, primary) + avatar circle (32px)
 
@@ -88,7 +88,7 @@ SCREEN 2 — BRIEF CONFIGURATION
 ─────────────────────────────────────────────
 
 Layout: 2-column (left config 480px, right preview fills remaining)
-No top nav — full focus mode. Show back arrow + "NarrativeOps" wordmark only.
+No top nav — full focus mode. Show back arrow + "Lumina" wordmark only.
 
 Left panel sections (vertical stack, 24px gap between sections):
   Section 1 — Brief
@@ -116,7 +116,7 @@ Left panel sections (vertical stack, 24px gap between sections):
     When expanded: JSON textarea with mono font + caption explaining Scenario 3
 
   Bottom of left panel (sticky):
-    "Run NarrativeOps pipeline" — full-width primary CTA button
+    "Run Lumina pipeline" — full-width primary CTA button
 
 Right panel:
   Static illustration showing the expected output structure:

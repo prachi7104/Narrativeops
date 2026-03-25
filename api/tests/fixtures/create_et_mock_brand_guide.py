@@ -75,7 +75,7 @@ def create_pdf(output_path: Path) -> None:
 def main() -> None:
     output_file = Path(__file__).parent / "ET_Mock_Brand_Guide.pdf"
     create_pdf(output_file)
-    print("Brand guide PDF created. Run it through NarrativeOps to verify 10+ rules extracted.")
+    print("Brand guide PDF created. Run it through Lumina to verify 10+ rules extracted.")
 
 
 if __name__ == "__main__":

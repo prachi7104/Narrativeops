@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowRight, FileText, Linkedin, Loader2, MessageCircle, Twitter } from 'lucide-react';
+import { AlertCircle, ArrowRight, FileText, Linkedin, Loader2, MessageCircle, RotateCw, Twitter } from 'lucide-react';
 
 import { getOutputs, listRuns } from '../api/client';
 import type { PipelineOutput, RunSummary } from '../api/types';
@@ -33,16 +33,24 @@ export function Gallery() {
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [outputsByRun, setOutputsByRun] = useState<OutputsByRun>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [loadingOutputsFor, setLoadingOutputsFor] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchRuns = () => {
+    setLoading(true);
+    setError(null);
     listRuns(50)
       .then(setRuns)
       .catch((err) => {
         console.error('Failed to load runs for gallery', err);
         setRuns([]);
+        setError('Unable to load gallery runs. Service may be temporarily unavailable.');
       })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchRuns();
   }, []);
 
   const filteredRuns = useMemo(() => {
@@ -138,6 +146,25 @@ export function Gallery() {
           <div className="flex items-center gap-2 text-sm text-text-secondary">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading gallery...
+          </div>
+        ) : error ? (
+          <div className="rounded-xl border border-warning/30 bg-warning/10 px-6 py-5 text-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-warning mb-1">Service Temporarily Unavailable</p>
+                  <p className="text-text-secondary">{error}</p>
+                </div>
+              </div>
+              <button
+                onClick={fetchRuns}
+                className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg bg-warning text-white hover:bg-warning/90 transition-colors text-sm font-medium"
+              >
+                <RotateCw className="w-4 h-4" />
+                Retry
+              </button>
+            </div>
           </div>
         ) : filteredRuns.length === 0 ? (
           <div className="rounded-md border border-dashed border-border-default bg-bg-surface p-8 text-center text-sm text-text-secondary">

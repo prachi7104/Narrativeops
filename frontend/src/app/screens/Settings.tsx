@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, Loader2, RefreshCcw } from 'lucide-react';
 
 import {
@@ -33,7 +33,9 @@ export function Settings() {
   const [healthOk, setHealthOk] = useState(false);
   const [recentRuns, setRecentRuns] = useState<RunSummary[]>([]);
 
-  useEffect(() => {
+  const loadSettings = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
     Promise.all([
       getHealth(),
       getSettingsRules(),
@@ -50,10 +52,14 @@ export function Settings() {
       })
       .catch((err) => {
         console.error('Failed to load settings data', err);
-        setLoadError('Failed to load settings. Please check your connection and try again.');
+        setLoadError('Failed to load settings. Service may be temporarily unavailable.');
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const apiStatus = useMemo<ApiStatusItem[]>(() => {
     const tavilyConnected = recentRuns.some((run) => (run.trend_sources_used || 0) > 0);
@@ -110,9 +116,23 @@ export function Settings() {
             Loading settings...
           </div>
         ) : loadError ? (
-          <div className="flex items-center gap-3 rounded-md border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
-            <AlertCircle className="h-5 w-5 shrink-0" />
-            <span>{loadError}</span>
+          <div className="rounded-xl border border-warning/30 bg-warning/10 px-6 py-5 text-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 shrink-0 text-warning mt-0.5" />
+                <div>
+                  <p className="font-medium text-warning mb-1">Service Temporarily Unavailable</p>
+                  <p className="text-text-secondary">{loadError}</p>
+                </div>
+              </div>
+              <button
+                onClick={loadSettings}
+                className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg bg-warning text-white hover:bg-warning/90 transition-colors text-sm font-medium"
+              >
+                <RefreshCcw className="h-4 w-4" />
+                Retry
+              </button>
+            </div>
           </div>
         ) : (
           <>

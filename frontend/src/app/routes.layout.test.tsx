@@ -23,7 +23,7 @@ describe('Route layout behavior', () => {
   it('shows sidebar navigation on tab routes', async () => {
     renderAt('/gallery');
 
-    expect(await screen.findByText('NarrativeOps')).toBeInTheDocument();
+    expect(await screen.findByText('Lumina')).toBeInTheDocument();
     expect(screen.getByText('Gallery Screen')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Settings/i })).toBeInTheDocument();
@@ -33,7 +33,7 @@ describe('Route layout behavior', () => {
     renderAt('/pipeline/run-99');
 
     expect(await screen.findByText('Pipeline Running Screen')).toBeInTheDocument();
-    expect(screen.queryByText('NarrativeOps')).not.toBeInTheDocument();
+    expect(screen.queryByText('Lumina')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Dashboard/i })).not.toBeInTheDocument();
   });
 

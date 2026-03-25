@@ -1,5 +1,5 @@
 """
-LangGraph pipeline for NarrativeOps content generation.
+LangGraph pipeline for Lumina content generation.
 
 This module builds the multi-agent content generation pipeline with:
 - Sequential processing through intake -> draft -> compliance -> localization -> format
@@ -66,7 +66,7 @@ def human_escalation(state: ContentState) -> dict:
 
 def build_pipeline():
     """
-    Build and compile the NarrativeOps content pipeline graph.
+    Build and compile the Lumina content pipeline graph.
 
     Pipeline flow:
         1. intake_agent: Analyze brief and create strategy

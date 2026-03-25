@@ -45,11 +45,11 @@ async def lifespan(app: FastAPI):
     seed_default_rules()
     global APP_EVENT_LOOP
     APP_EVENT_LOOP = asyncio.get_running_loop()
-    logger.info("NarrativeOps API starting")
+    logger.info("Lumina API starting")
     yield
 
 
-app = FastAPI(title="NarrativeOps API", lifespan=lifespan)
+app = FastAPI(title="Lumina API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -747,7 +747,7 @@ async def get_pipeline_audit_pdf(run_id: str) -> Response:
         )
 
     title_table = Table(
-        [["NarrativeOps Audit Report"], [f"Run ID: {run_id}"]], colWidths=[7.2 * inch]
+        [["Lumina Audit Report"], [f"Run ID: {run_id}"]], colWidths=[7.2 * inch]
     )
     title_table.setStyle(
         TableStyle(
@@ -785,3 +785,9 @@ async def get_pipeline_audit_pdf(run_id: str) -> Response:
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=audit-{run_id}.pdf"},
     )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("api.main:app", host="0.0.0.0", port=8000)

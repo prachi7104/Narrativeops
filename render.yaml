@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: narrativeops-api
+    name: lumina-api
     env: python
     rootDir: api
     buildCommand: pip install -r requirements.txt

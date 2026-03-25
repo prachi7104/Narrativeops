@@ -8,6 +8,8 @@ import {
   FileText,
   Newspaper,
   Inbox,
+  AlertCircle,
+  RotateCw,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { listRuns } from '../api/client';
@@ -108,19 +110,27 @@ export function MyPipelines() {
   const navigate = useNavigate();
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  useEffect(() => {
+  const fetchRuns = () => {
+    setLoading(true);
+    setError(null);
     listRuns(50)
       .then((data: RunSummary[]) => {
         setRuns(data);
-        setLoading(false);
       })
       .catch((err) => {
         console.error('Failed to load pipelines:', err);
-        setLoading(false);
-      });
+        setRuns([]);
+        setError('Unable to load pipelines. Service may be temporarily unavailable.');
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchRuns();
   }, []);
 
   const filtered = runs.filter((run) => {
@@ -196,6 +206,25 @@ export function MyPipelines() {
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-8">
         {loading ? (
           <SkeletonCards />
+        ) : error ? (
+          <div className="rounded-xl border border-warning/30 bg-warning/10 px-6 py-5 text-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-warning mb-1">Service Temporarily Unavailable</p>
+                  <p className="text-text-secondary">{error}</p>
+                </div>
+              </div>
+              <button
+                onClick={fetchRuns}
+                className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg bg-warning text-white hover:bg-warning/90 transition-colors text-sm font-medium"
+              >
+                <RotateCw className="w-4 h-4" />
+                Retry
+              </button>
+            </div>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="w-20 h-20 mb-4 bg-bg-surface rounded-full flex items-center justify-center">

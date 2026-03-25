@@ -15,6 +15,8 @@ import {
   ArrowRight,
   X,
   Upload,
+  AlertCircle,
+  RotateCw,
 } from 'lucide-react';
 
 import {
@@ -157,15 +159,29 @@ export function Dashboard() {
   /* --- data -------------------------------------------------------- */
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [styleMemory, setStyleMemory] = useState<StyleMemoryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchDashboardData = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
     Promise.all([getDashboardSummary(), getStyleMemory(20)])
       .then(([s, m]) => {
         setSummary(s);
         setStyleMemory(m);
       })
-      .catch(console.error);
+      .catch((err) => {
+        console.error(err);
+        setSummary(null);
+        setStyleMemory(null);
+        setLoadError('Unable to load dashboard data. Service may be temporarily unavailable.');
+      })
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   /* --- slide-over state ------------------------------------------- */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -308,7 +324,28 @@ export function Dashboard() {
               </button>
             </div>
 
-            {summary?.most_recent_runs && summary.most_recent_runs.length > 0 ? (
+            {loading ? (
+              <div className="card p-8 text-center text-sm text-text-secondary">Loading dashboard...</div>
+            ) : loadError ? (
+              <div className="rounded-xl border border-warning/30 bg-warning/10 px-6 py-5 text-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-warning mb-1">Service Temporarily Unavailable</p>
+                      <p className="text-text-secondary">{loadError}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={fetchDashboardData}
+                    className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg bg-warning text-white hover:bg-warning/90 transition-colors text-sm font-medium"
+                  >
+                    <RotateCw className="w-4 h-4" />
+                    Retry
+                  </button>
+                </div>
+              </div>
+            ) : summary?.most_recent_runs && summary.most_recent_runs.length > 0 ? (
               <div className="grid grid-cols-1 gap-4">
                 {summary.most_recent_runs.map((run) => {
                   const badge = statusBadge(run.status);
@@ -345,7 +382,7 @@ export function Dashboard() {
           {/* RIGHT COLUMN 30%: Achievement Cards + Brand Hub */}
           <div className="space-y-6">
             {/* Achievement Cards */}
-            {summary && (
+            {summary && !loadError && (
               <section>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="card-surface p-4">
