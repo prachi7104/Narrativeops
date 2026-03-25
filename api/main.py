@@ -248,6 +248,10 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
                 },
             )
 
+        checkpoint_state = pipeline.get_state(config)
+        final_values = getattr(checkpoint_state, "values", {}) or {}
+        final_audit_log = final_values.get("audit_log", [])
+
         if latest_pipeline_status == "awaiting_approval":
             _emit_sse(
                 run_id,
@@ -257,6 +261,9 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
                 },
             )
         elif latest_pipeline_status == "escalated":
+            database.update_run_status(run_id, "escalated")
+            if isinstance(final_audit_log, list) and final_audit_log:
+                database.write_audit_log(run_id, final_audit_log)
             _emit_sse(
                 run_id,
                 {

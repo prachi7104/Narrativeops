@@ -5,7 +5,7 @@ import { motion } from 'motion/react';
 
 import { usePipelineSSE, AGENT_ID_MAP } from '../../hooks/usePipelineSSE';
 
-type AgentStatus = 'pending' | 'running' | 'done' | 'warning' | 'error';
+type AgentStatus = 'pending' | 'running' | 'done' | 'warning' | 'error' | 'skipped';
 
 interface Agent {
   id: string;
@@ -64,7 +64,18 @@ export function PipelineRunning() {
         let newStatus: AgentStatus = 'running';
         const pipelineStatus = (eventData.pipeline_status as string) || '';
         const normalized = pipelineStatus.toLowerCase();
-        if (normalized.includes('complete') || normalized.includes('pass')) {
+        if (agentName === 'compliance_agent') {
+          const verdict = String(eventData.compliance_verdict || '').toUpperCase();
+          if (verdict === 'PASS') {
+            newStatus = 'done';
+          } else if (verdict === 'REVISE') {
+            newStatus = 'warning';
+          } else if (verdict === 'REJECT') {
+            newStatus = 'error';
+          } else if (normalized.includes('complete') || normalized.includes('pass')) {
+            newStatus = 'done';
+          }
+        } else if (normalized.includes('complete') || normalized.includes('pass')) {
           newStatus = 'done';
         } else if (normalized.includes('revise')) {
           newStatus = 'warning';
@@ -104,17 +115,22 @@ export function PipelineRunning() {
 
   const onError = useCallback((message: string) => {
     setPipelineError(message);
+    const isEscalation = message.toLowerCase().includes('escalated for manual review');
     setAgents((prev) => prev.map((a) =>
-      a.status === 'pending' || a.status === 'running'
-        ? { ...a, status: 'error' }
-        : a
+      isEscalation
+        ? (Number(a.id) >= 6 && (a.status === 'pending' || a.status === 'running')
+            ? { ...a, status: 'skipped' }
+            : a)
+        : (a.status === 'pending' || a.status === 'running'
+            ? { ...a, status: 'error' }
+            : a)
     ));
     setLogs((prev) => [...prev, {
       id: logIdCounter.current++,
       timestamp: new Date().toISOString(),
       agent: 'system',
       message: 'Pipeline error: ' + message,
-      level: 'error',
+      level: isEscalation ? 'warning' : 'error',
     }]);
   }, []);
 
@@ -142,6 +158,8 @@ export function PipelineRunning() {
         return 'bg-warning';
       case 'error':
         return 'bg-error';
+      case 'skipped':
+        return 'bg-text-tertiary/60';
       default:
         return 'bg-text-tertiary';
     }
@@ -160,6 +178,8 @@ export function PipelineRunning() {
         return 'Warning';
       case 'error':
         return 'Failed';
+      case 'skipped':
+        return 'Skipped';
       default:
         return 'Pending';
     }
