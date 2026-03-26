@@ -67,6 +67,13 @@ def _derive_best_channel(engagement_data: dict | None, default_channel: str = "b
     return channel_map.get(best_channel, best_channel)
 
 
+def _safe_float(value: object) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def run_intake_agent(state: ContentState) -> dict:
     """
     Process brief and engagement data to create content strategy.
@@ -180,6 +187,49 @@ Return ONLY the JSON object. No explanation, no markdown, no preamble."""
     raw_flags = strategy.get("compliance_flags", [])
     compliance_flags = raw_flags if isinstance(raw_flags, list) else []
 
+    engagement_strategy: dict = {}
+    if isinstance(engagement_data, dict) and engagement_data:
+        content_calendar = strategy.get("content_calendar")
+        strategy_rec = strategy.get("strategy_recommendation")
+
+        scored_channels: list[tuple[str, dict, float]] = []
+        for channel, payload in engagement_data.items():
+            if not isinstance(payload, dict):
+                continue
+            rate = _safe_float(payload.get("engagement_rate"))
+            views = _safe_float(payload.get("avg_views"))
+            score = (rate * 100) + (views / 1000)
+            scored_channels.append((str(channel), payload, score))
+
+        scored_channels.sort(key=lambda item: item[2], reverse=True)
+
+        if len(scored_channels) >= 2:
+            top_ch, top_perf, _ = scored_channels[0]
+            bot_ch, bot_perf, _ = scored_channels[-1]
+            top_rate = _safe_float(top_perf.get("engagement_rate"))
+            bot_rate = _safe_float(bot_perf.get("engagement_rate"))
+            ratio = (top_rate / bot_rate) if bot_rate > 0 else float("inf")
+            ratio_value = round(ratio, 1) if ratio != float("inf") else 99.9
+            pivot_recommended = ratio > 2.0
+
+            engagement_strategy = {
+                "recommendation": strategy_rec,
+                "content_calendar": content_calendar,
+                "top_channel": top_ch,
+                "underperforming_channel": bot_ch,
+                "performance_ratio": ratio_value,
+                "pivot_recommended": pivot_recommended,
+                "pivot_reason": (
+                    f"{top_ch} outperforms {bot_ch} by {ratio_value}x "
+                    f"(engagement rate: {top_rate:.1%} vs {bot_rate:.1%})"
+                ) if pivot_recommended else None,
+            }
+        else:
+            engagement_strategy = {
+                "recommendation": strategy_rec,
+                "content_calendar": content_calendar,
+            }
+
     # Build audit log entry
     audit_entry = {
         "agent": "intake_agent",
@@ -193,6 +243,7 @@ Return ONLY the JSON object. No explanation, no markdown, no preamble."""
         "strategy": strategy,
         "content_category": detected_category,
         "compliance_flags": [str(flag) for flag in compliance_flags if str(flag).strip()],
+        "engagement_strategy": engagement_strategy,
         "pipeline_status": "intake_complete",
         "audit_log": state.get("audit_log", []) + [audit_entry]
     }

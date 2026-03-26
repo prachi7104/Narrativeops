@@ -67,8 +67,27 @@ export interface ComplianceAuditSummary {
 export interface PipelineRun {
   id: string;
   brief_topic: string;
-  status: "running" | "awaiting_approval" | "completed" | "failed" | "escalated";
+  status: "running" | "awaiting_approval" | "completed" | "failed" | "escalated" | "rejected";
   created_at: string;
+}
+
+export interface EngagementStrategyResponse {
+  run_id: string;
+  engagement_strategy: {
+    recommendation?: string;
+    top_channel?: string;
+    underperforming_channel?: string;
+    performance_ratio?: number;
+    pivot_recommended?: boolean;
+    pivot_reason?: string;
+  };
+  content_calendar: Array<{
+    week: number;
+    items: Array<{ format: string; topic: string; channel: string }>;
+  }> | null;
+  strategy_recommendation: string | null;
+  pivot_recommended: boolean;
+  pivot_reason: string | null;
 }
 
 export interface DashboardSummary {
@@ -97,7 +116,7 @@ export interface UploadGuideResponse {
 export interface RunSummary {
   id: string;
   brief_topic: string;
-  status: "running" | "awaiting_approval" | "completed" | "failed" | "escalated";
+  status: "running" | "awaiting_approval" | "completed" | "failed" | "escalated" | "rejected";
   created_at: string;
   total_duration_ms?: number;
   compliance_iterations?: number;

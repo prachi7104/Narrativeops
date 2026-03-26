@@ -19,14 +19,18 @@ const mockGetOutputs = vi.fn();
 const mockGetMetrics = vi.fn();
 const mockCaptureDiff = vi.fn();
 const mockApprovePipeline = vi.fn();
+const mockRejectPipeline = vi.fn();
 const mockGetAuditTrail = vi.fn();
+const mockGetPipelineStrategy = vi.fn();
 
 vi.mock('../app/api/client', () => ({
   getOutputs: (...args: unknown[]) => mockGetOutputs(...args),
   getMetrics: (...args: unknown[]) => mockGetMetrics(...args),
   captureDiff: (...args: unknown[]) => mockCaptureDiff(...args),
   approvePipeline: (...args: unknown[]) => mockApprovePipeline(...args),
+  rejectPipeline: (...args: unknown[]) => mockRejectPipeline(...args),
   getAuditTrail: (...args: unknown[]) => mockGetAuditTrail(...args),
+  getPipelineStrategy: (...args: unknown[]) => mockGetPipelineStrategy(...args),
 }));
 
 describe('ApprovalGate', () => {
@@ -57,6 +61,15 @@ describe('ApprovalGate', () => {
     });
 
     mockApprovePipeline.mockResolvedValue({ status: 'approved' });
+    mockRejectPipeline.mockResolvedValue({ status: 'rejected' });
+    mockGetPipelineStrategy.mockResolvedValue({
+      run_id: 'run-123',
+      engagement_strategy: {},
+      content_calendar: null,
+      strategy_recommendation: null,
+      pivot_recommended: false,
+      pivot_reason: null,
+    });
 
     mockGetAuditTrail.mockResolvedValue([
       {

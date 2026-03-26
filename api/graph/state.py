@@ -15,6 +15,7 @@ class ContentState(TypedDict):
 
     Phase Outputs:
       - strategy: Output from intake agent (content strategy)
+      - engagement_strategy: Derived pivot recommendation and content calendar metadata
       - compliance_flags: Risk areas identified at intake to prioritize compliance checks
       - trend_context: Trend summary bullets generated from current market context
       - trend_sources: Source URLs used to build trend context
@@ -55,6 +56,7 @@ class ContentState(TypedDict):
     output_options: list[str]
     target_languages: list[str]
     strategy: dict
+    engagement_strategy: dict
     compliance_flags: list[str]
     trend_context: str
     trend_sources: list[str]

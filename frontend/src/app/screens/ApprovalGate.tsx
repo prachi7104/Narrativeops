@@ -11,6 +11,7 @@ import {
   approvePipeline,
   rejectPipeline,
   getAuditTrail,
+  getPipelineStrategy,
 } from '../api/client';
 import type {
   AuditEvent,
@@ -166,6 +167,9 @@ export function ApprovalGate() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [toast, setToast] = useState('');
   const [unsavedTabs, setUnsavedTabs] = useState<Set<Channel>>(new Set());
+  const [engagementStrategy, setEngagementStrategy] = useState<EngagementStrategyResponse | null>(null);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
   const [swipeLocked, setSwipeLocked] = useState(false);
   const swipeX = useMotionValue(0);
   const swipeControls = useAnimation();
@@ -191,10 +195,11 @@ export function ApprovalGate() {
     }
 
     try {
-      const [outputs, loadedMetrics, auditEvents] = await Promise.all([
+      const [outputs, loadedMetrics, auditEvents, strategy] = await Promise.all([
         getOutputs(id),
         getMetrics(id),
         getAuditTrail(id),
+        getPipelineStrategy(id).catch(() => null),
       ]);
       const mapped = mapOutputsToContent(outputs);
       setContent(mapped);
@@ -202,6 +207,7 @@ export function ApprovalGate() {
       setOriginalContent(mapped);
       setMetrics(loadedMetrics);
       setComplianceSummary(parseComplianceSummary(auditEvents));
+      setEngagementStrategy(strategy);
       const formatMeta = parseFormatMetadata(auditEvents);
       setOutputOptions(formatMeta.options);
 
@@ -326,12 +332,22 @@ export function ApprovalGate() {
 
   const handleReject = async () => {
     if (!id) return;
+    if (!rejectionReason.trim()) return;
     try {
-      await rejectPipeline(id);
+      await rejectPipeline(id, rejectionReason.trim());
+      setRejectDialogOpen(false);
+      setRejectionReason('');
       navigate('/pipelines');
     } catch (err) {
       console.error('Reject failed:', err);
     }
+  };
+
+  const openRejectDialog = () => {
+    setRejectDialogOpen(true);
+    setSwipeLocked(false);
+    swipeX.set(0);
+    void swipeControls.start({ x: 0, opacity: 1, transition: { duration: 0.2 } });
   };
 
   const getChannelIcon = (channel: Channel) => {
@@ -647,8 +663,7 @@ export function ApprovalGate() {
 
                   if (info.offset.x < -150) {
                     setSwipeLocked(true);
-                    await swipeControls.start({ x: -360, opacity: 0, transition: { duration: 0.22 } });
-                    await handleReject();
+                          openRejectDialog();
                     return;
                   }
 

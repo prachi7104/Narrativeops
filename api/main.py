@@ -97,6 +97,7 @@ class RunRequest(BaseModel):
 
 class ApproveRequest(BaseModel):
     approved: bool = True
+    rejection_reason: str = ""
 
 
 class FeedbackRequest(BaseModel):
@@ -232,6 +233,7 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
             "output_options": output_options,
             "target_languages": brief.get("target_languages", ["en", "hi"]),
             "strategy": {},
+            "engagement_strategy": {},
             "compliance_flags": [],
             "trend_context": "",
             "trend_sources": [],
@@ -519,7 +521,55 @@ async def approve_pipeline(run_id: str, request: ApproveRequest) -> dict:
         return {"status": "approved"}
 
     database.update_run_status(run_id, "rejected")
+
+    if request.rejection_reason.strip():
+        try:
+            client = database.get_supabase_client()
+            if client is not None:
+                (
+                    client.table("pipeline_runs")
+                    .update({"rejection_reason": request.rejection_reason.strip()})
+                    .eq("id", run_id)
+                    .execute()
+                )
+        except Exception as exc:
+            logger.exception("Failed to store rejection reason for run_id=%s: %s", run_id, exc)
+
     return {"status": "rejected"}
+
+
+@app.get("/api/pipeline/{run_id}/strategy")
+async def get_pipeline_strategy(run_id: str) -> dict:
+    """Return engagement strategy and content calendar for a run."""
+    try:
+        from api.graph.pipeline import get_pipeline
+
+        pipeline = get_pipeline()
+        config = {"configurable": {"thread_id": run_id}}
+        checkpoint_state = pipeline.get_state(config)
+        values = getattr(checkpoint_state, "values", {}) or {}
+
+        engagement_strategy = values.get("engagement_strategy", {}) or {}
+        strategy = values.get("strategy", {}) or {}
+
+        return {
+            "run_id": run_id,
+            "engagement_strategy": engagement_strategy,
+            "content_calendar": engagement_strategy.get("content_calendar"),
+            "strategy_recommendation": strategy.get("strategy_recommendation"),
+            "pivot_recommended": bool(engagement_strategy.get("pivot_recommended", False)),
+            "pivot_reason": engagement_strategy.get("pivot_reason"),
+        }
+    except Exception as exc:
+        logger.exception("Failed to get strategy for run_id=%s: %s", run_id, exc)
+        return {
+            "run_id": run_id,
+            "engagement_strategy": {},
+            "content_calendar": None,
+            "strategy_recommendation": None,
+            "pivot_recommended": False,
+            "pivot_reason": None,
+        }
 
 
 @app.post("/api/pipeline/{run_id}/feedback")

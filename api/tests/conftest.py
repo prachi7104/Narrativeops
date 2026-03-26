@@ -63,6 +63,7 @@ def minimal_content_state():
             "output_options": ["blog", "twitter", "linkedin", "whatsapp"],
             "target_languages": ["en", "hi"],
             "strategy": {},
+            "engagement_strategy": {},
             "compliance_flags": [],
             "trend_context": "",
             "trend_sources": [],

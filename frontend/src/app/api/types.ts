@@ -4,6 +4,7 @@ export type {
 	ComplianceAuditSummary,
 	CorrectionsSummaryResponse,
 	DashboardSummary,
+	EngagementStrategyResponse,
 	RunSummary,
 	SettingsRulesResponse,
 	PipelineMetrics,
