@@ -5,6 +5,8 @@ import confetti from 'canvas-confetti';
 import { motion } from 'motion/react';
 
 import { getOutputs, getMetrics, captureDiff, approvePipeline, rejectPipeline, getAuditTrail } from '../api/client';
+import { useIsMobile } from '../components/ui/use-mobile';
+import { SwipeApprovalCard } from '../components/SwipeApprovalCard';
 import type {
   AuditEvent,
   ComplianceAnnotation,
@@ -153,6 +155,7 @@ export function ApprovalGate() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [toast, setToast] = useState('');
   const [unsavedTabs, setUnsavedTabs] = useState<Set<Channel>>(new Set());
+  const isMobile = useIsMobile();
 
   const hasAnyGeneratedOutput = [
     content.blog,
@@ -535,7 +538,8 @@ export function ApprovalGate() {
                 </button>
                 <h2 className="text-xl md:text-2xl">Review your content</h2>
               </div>
-              <p className="text-text-secondary text-sm">Pipeline complete — awaiting approval</p>
+              <p className="text-text-secondary text-sm">Pipeline complete, awaiting your decision.</p>
+              <p className="text-text-secondary text-xs mt-1">Lumina: Enterprise content, on autopilot.</p>
             </div>
 
             <div className="flex gap-3 w-full md:w-auto">
@@ -601,7 +605,20 @@ export function ApprovalGate() {
             </div>
           )}
 
-          {renderContent()}
+          {!editMode && isMobile ? (
+            <SwipeApprovalCard
+              title={tabs.find((tab) => tab.id === activeTab)?.label || 'Content'}
+              content={editedContent[activeTab] || ''}
+              onApprove={() => {
+                void handleApprove();
+              }}
+              onReject={() => {
+                void handleReject();
+              }}
+            />
+          ) : (
+            renderContent()
+          )}
           {toast && (
             <div className="mt-4 rounded-md border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-500">
               {toast}

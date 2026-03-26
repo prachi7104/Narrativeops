@@ -2,10 +2,19 @@
 Localization agent: Adapts content for Hindi audience.
 """
 
+import re
 import time
 
 from api.graph.state import ContentState
 from api.llm import call_llm
+
+
+def _normalize_financial_terms(text: str) -> str:
+    """Normalize common acronym transliterations to preferred financial spellings."""
+    normalized = text
+    # Keep SIP explicit so downstream checks and human reviewers see a clear acronym.
+    normalized = re.sub(r"\bसिप\b", "एसआईपी", normalized)
+    return normalized
 
 
 def run_localization_agent(state: ContentState) -> dict:
@@ -79,6 +88,7 @@ Return ONLY the Hindi translated content with section markers preserved."""
         max_tokens=3000,
         json_mode=False
     )
+    localized_hi = _normalize_financial_terms(localized_hi)
 
     end_time = time.time()
     duration_ms = int((end_time - start_time) * 1000)

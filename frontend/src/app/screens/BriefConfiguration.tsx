@@ -403,13 +403,13 @@ export function BriefConfiguration() {
             </div>
           </div>
 
-          {/* Section 5 - Engagement Data (Collapsible) */}
+          {/* Section 5 - Connect Analytics (Collapsible) */}
           <div>
             <button
               onClick={() => setEngagementExpanded(!engagementExpanded)}
               className="w-full flex items-center justify-between text-text-primary mb-3 text-sm font-medium hover:text-accent-primary transition-colors"
             >
-              <span>Engagement data</span>
+              <span>Connect Analytics</span>
               {engagementExpanded ? (
                 <ChevronUp className="w-4 h-4" />
               ) : (
@@ -424,7 +424,7 @@ export function BriefConfiguration() {
                   className="w-full min-h-[100px] bg-bg-surface border border-border-default rounded-md p-4 text-text-primary resize-none focus:border-accent-primary focus:outline-none transition-colors font-mono text-xs"
                 />
                 <p className="text-xs text-text-tertiary mt-2">
-                  Provide historical engagement metrics to optimize content for Scenario 3
+                  Use simulated analytics metrics to optimize Scenario 3 behavior
                 </p>
               </div>
             )}
@@ -479,7 +479,7 @@ export function BriefConfiguration() {
                 Running pipeline...
               </span>
             ) : (
-              'Run Lumina pipeline'
+              'Launch campaign'
             )}
           </button>
           {runError && <p className="mt-2 text-sm text-amber-500">{runError}</p>}
@@ -489,7 +489,7 @@ export function BriefConfiguration() {
       {/* Right Panel - Preview */}
       <div className="hidden md:flex flex-1 items-center justify-center p-12 bg-bg-primary">
         <div className="max-w-md">
-          <h3 className="text-text-secondary mb-8">What you'll get</h3>
+          <h3 className="text-text-secondary mb-8">Campaign output</h3>
 
           {/* Agent Steps */}
           <div className="mb-12 space-y-3">

@@ -4,6 +4,7 @@ import { StopCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 
 import { usePipelineSSE, AGENT_ID_MAP } from '../../hooks/usePipelineSSE';
+import { AgentFlowMap } from '../components/AgentFlowMap';
 
 type AgentStatus = 'pending' | 'running' | 'done' | 'warning' | 'error' | 'skipped';
 
@@ -41,6 +42,7 @@ export function PipelineRunning() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [complianceBounced, setComplianceBounced] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
   const logIdCounter = useRef(1);
 
@@ -58,6 +60,16 @@ export function PipelineRunning() {
   const onAgentUpdate = useCallback((agentName: string, eventData: Record<string, unknown>) => {
     const agentId = AGENT_ID_MAP[agentName];
     if (!agentId) return;
+
+    if (agentName === 'compliance_agent') {
+      const verdict = String(eventData.compliance_verdict || '').toUpperCase();
+      if (verdict === 'REVISE' || verdict === 'REJECT') {
+        setComplianceBounced(true);
+      }
+      if (verdict === 'PASS') {
+        setComplianceBounced(false);
+      }
+    }
 
     setAgents((prev) => prev.map((agent) => {
       if (agent.id === agentId) {
@@ -200,6 +212,30 @@ export function PipelineRunning() {
     }
   };
 
+  const strategyStatus: 'idle' | 'active' | 'done' | 'error' = agents.some((agent) => agent.id === '1' && agent.status === 'running') || agents.some((agent) => agent.id === '2' && agent.status === 'running')
+    ? 'active'
+    : agents.some((agent) => (agent.id === '1' || agent.id === '2') && agent.status === 'error')
+      ? 'error'
+      : agents.every((agent) => (agent.id === '1' || agent.id === '2') ? agent.status === 'done' : true)
+        ? 'done'
+        : 'idle';
+
+  const copywriterStatus: 'idle' | 'active' | 'done' | 'error' = agents.some((agent) => ['3', '4', '6', '7'].includes(agent.id) && agent.status === 'running')
+    ? 'active'
+    : agents.some((agent) => ['3', '4', '6', '7'].includes(agent.id) && agent.status === 'error')
+      ? 'error'
+      : agents.some((agent) => ['3', '4', '6', '7'].includes(agent.id) && agent.status === 'done')
+        ? 'done'
+        : 'idle';
+
+  const complianceStatus: 'idle' | 'active' | 'done' | 'error' = agents.find((agent) => agent.id === '5')?.status === 'running'
+    ? 'active'
+    : agents.find((agent) => agent.id === '5')?.status === 'done'
+      ? 'done'
+      : ['warning', 'error'].includes(agents.find((agent) => agent.id === '5')?.status || '')
+        ? 'error'
+        : 'idle';
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -212,6 +248,7 @@ export function PipelineRunning() {
         <div className="flex items-center gap-2">
           <span className="text-text-secondary text-xs md:text-sm">Pipeline</span>
           <span className="font-mono text-text-tertiary text-xs hidden md:inline">{runId}</span>
+          <span className="hidden lg:inline text-[11px] text-text-secondary">Lumina: Enterprise content, on autopilot.</span>
         </div>
 
         <div className="font-mono text-xl md:text-2xl text-text-primary font-semibold">
@@ -231,7 +268,24 @@ export function PipelineRunning() {
       <div className="flex-1 flex flex-col md:flex-row">
         {/* Left Column - Agent Visualization */}
         <div className="flex-1 md:w-3/5 p-4 md:p-6 lg:p-8 overflow-y-auto">
-          <div className="max-w-2xl mx-auto space-y-3">
+          <div className="max-w-2xl mx-auto space-y-5">
+            <AgentFlowMap
+              strategy={strategyStatus}
+              copywriter={copywriterStatus}
+              compliance={complianceStatus}
+              complianceBounced={complianceBounced}
+            />
+
+            <div className="rounded-2xl border border-border-default bg-white p-4 text-sm text-text-secondary">
+              <p>
+                {strategyStatus === 'active' && 'Strategy agent shaping campaign goal...'}
+                {copywriterStatus === 'active' && 'Copywriter agent drafting publish-ready content...'}
+                {complianceStatus === 'active' && 'Compliance guardrail reviewing tone and claims...'}
+                {complianceBounced && ' Compliance requested revisions. Draft is being updated now.'}
+                {strategyStatus === 'done' && copywriterStatus === 'done' && complianceStatus === 'done' && 'All agents aligned. Final output is ready.'}
+              </p>
+            </div>
+
             {agents.map((agent, index) => (
               <div key={agent.id}>
                 <div

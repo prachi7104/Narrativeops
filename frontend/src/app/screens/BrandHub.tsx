@@ -41,9 +41,9 @@ export function BrandHub() {
             <Brain className="w-5 h-5 text-accent-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold text-text-primary">Brand Hub</h1>
+            <h1 className="text-2xl font-semibold text-text-primary">Governance & Compliance Hub</h1>
             <p className="text-sm text-text-secondary mt-0.5">
-              Editorial corrections captured from approvals
+              Lumina: Enterprise content, on autopilot.
             </p>
           </div>
         </div>

@@ -61,7 +61,7 @@ Layout: 1440px wide, top navigation + content area
 Top navigation bar (64px height):
   Left: Lumina wordmark (white, 16px/600)
   Center: nothing
-  Right: "New pipeline" button (indigo, primary) + avatar circle (32px)
+  Right: "Create campaign" button (indigo, primary) + avatar circle (32px)
 
 Hero input section (center of page, top 40% of content area):
   Large rounded card (glassmorphism surface):
@@ -69,7 +69,7 @@ Hero input section (center of page, top 40% of content area):
               minimum height 120px, auto-expands
     Row below textarea: 3 quick-select chips (Article / Social Campaign / Product Launch)
     Row below chips: Channel toggles — Blog, Twitter, LinkedIn, WhatsApp (icon + label)
-    Bottom of card: Language toggle (EN | HI) on left, "Run pipeline" CTA on right
+    Bottom of card: Language toggle (EN | HI) on left, "Launch campaign" CTA on right
 
 Trending topics row (below the card):
   Label: "Trending in your category" (caption, secondary color)
@@ -111,18 +111,18 @@ Left panel sections (vertical stack, 24px gap between sections):
     4-segment selector: Authoritative | Accessible | Analytical | Urgent
     Selected segment: indigo fill, white text
 
-  Section 5 — Engagement data (collapsible)
-    Collapsed default, expand arrow on right
-    When expanded: JSON textarea with mono font + caption explaining Scenario 3
+  Section 5 — Connect Analytics
+    Demo connector toggles (HubSpot / Google Analytics)
+    Include "Simulate Audience Pivot" switch for Scenario 3 demo mode
 
   Bottom of left panel (sticky):
-    "Run Lumina pipeline" — full-width primary CTA button
+    "Launch campaign" — full-width primary CTA button
 
 Right panel:
   Static illustration showing the expected output structure:
     5 agent steps as a vertical list with connecting dots
     Below: 4 channel output placeholders (ghost/wireframe style cards)
-    Label above: "What you'll get"
+    Label above: "Campaign output"
 
 ─────────────────────────────────────────────
 SCREEN 3 — PIPELINE RUNNING (AGENT WORKFLOW)
@@ -160,7 +160,7 @@ SCREEN 4 — APPROVAL GATE
 Layout: Full page, 2 columns (main content 65%, right sidebar 35%)
 
 Page header:
-  Left: "Review your content" (H2) + subtitle "Pipeline complete — awaiting approval"
+  Left: "Review your content" (H2) + subtitle "Pipeline complete, awaiting your decision"
   Right: "Approve & publish" button (green, large) + "Reject" button (ghost, destructive)
 
 Tab row (below header):
@@ -204,10 +204,10 @@ Filter row above table:
   All agents | Compliance only | User edits only
 
 ─────────────────────────────────────────────
-SCREEN 6 — MY PIPELINES (HISTORY)
+SCREEN 6 — APPROVALS (HISTORY)
 ─────────────────────────────────────────────
 
-Header: "My pipelines" + search input + filter dropdown
+Header: "Approvals" + search input + filter dropdown
 
 Table:
   Topic | Channels | Compliance | Language | Created | Status | Actions

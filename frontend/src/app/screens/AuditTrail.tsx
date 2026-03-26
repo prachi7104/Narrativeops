@@ -123,6 +123,7 @@ export function AuditTrail() {
               <div>
                 <h2 className="text-xl md:text-2xl">Audit trail</h2>
                 <p className="text-text-secondary text-xs md:text-sm font-mono mt-1">Pipeline {id}</p>
+                <p className="text-text-secondary text-xs mt-1">Lumina: Enterprise content, on autopilot.</p>
               </div>
             </div>
 

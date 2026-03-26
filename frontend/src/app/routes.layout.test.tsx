@@ -3,7 +3,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('./screens/Dashboard', () => ({ Dashboard: () => <div>Dashboard Screen</div> }));
-vi.mock('./screens/BriefConfiguration', () => ({ BriefConfiguration: () => <div>Configure Screen</div> }));
+vi.mock('./screens/CampaignWizard', () => ({ CampaignWizard: () => <div>Configure Screen</div> }));
 vi.mock('./screens/PipelineRunning', () => ({ PipelineRunning: () => <div>Pipeline Running Screen</div> }));
 vi.mock('./screens/ApprovalGate', () => ({ ApprovalGate: () => <div>Approval Screen</div> }));
 vi.mock('./screens/AuditTrail', () => ({ AuditTrail: () => <div>Audit Screen</div> }));
@@ -23,7 +23,8 @@ describe('Route layout behavior', () => {
   it('shows sidebar navigation on tab routes', async () => {
     renderAt('/gallery');
 
-    expect(await screen.findByText('Lumina')).toBeInTheDocument();
+    const luminaMarks = await screen.findAllByText('Lumina');
+    expect(luminaMarks.length).toBeGreaterThan(0);
     expect(screen.getByText('Gallery Screen')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Settings/i })).toBeInTheDocument();
@@ -42,6 +43,6 @@ describe('Route layout behavior', () => {
 
     expect(await screen.findByText('Dashboard Screen')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Settings/i })).toHaveAttribute('href', '/settings');
-    expect(screen.getByRole('link', { name: /Gallery/i })).toHaveAttribute('href', '/gallery');
+    expect(screen.getByRole('link', { name: /Asset Library/i })).toHaveAttribute('href', '/gallery');
   });
 });

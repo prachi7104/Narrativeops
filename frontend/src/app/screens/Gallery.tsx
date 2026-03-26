@@ -111,8 +111,8 @@ export function Gallery() {
     <div className="min-h-screen bg-bg-primary">
       <div className="border-b border-border-default">
         <div className="mx-auto max-w-6xl px-4 py-6 md:px-6">
-          <h2 className="text-2xl text-text-primary">Gallery</h2>
-          <p className="mt-1 text-sm text-text-secondary">Published content archive across pipeline runs.</p>
+          <h2 className="text-2xl text-text-primary">Asset Library</h2>
+          <p className="mt-1 text-sm text-text-secondary">Lumina: Enterprise content, on autopilot.</p>
         </div>
       </div>
 

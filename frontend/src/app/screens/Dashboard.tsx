@@ -278,6 +278,11 @@ export function Dashboard() {
       className="min-h-screen bg-bg-primary"
     >
       <main className="max-w-[1600px] mx-auto px-8 py-8 md:py-12">
+        <header className="mb-8">
+          <h1 className="text-2xl md:text-3xl text-text-primary">Dashboard</h1>
+          <p className="mt-1 text-sm text-text-secondary">Lumina: Enterprise content, on autopilot.</p>
+        </header>
+
         {/* ------ Section: Template Grid ------ */}
         <section className="mb-8">
           <h2 className="text-text-secondary text-sm font-medium mb-6">
@@ -315,7 +320,7 @@ export function Dashboard() {
           {/* LEFT COLUMN 70%: Recent Pipelines */}
           <section>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-text-secondary text-sm font-medium">Recent Pipelines</h2>
+              <h2 className="text-text-secondary text-sm font-medium">Active workflows</h2>
               <button
                 onClick={() => navigate('/pipelines')}
                 className="flex items-center gap-1 text-accent-primary text-sm hover:gap-2 transition-all"
@@ -423,7 +428,7 @@ export function Dashboard() {
             {/* Brand Hub */}
             <section>
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-text-secondary text-sm font-medium">Brand Hub</h2>
+                <h2 className="text-text-secondary text-sm font-medium">Governance & Compliance Hub</h2>
                 <span className="text-xs text-text-tertiary">
                   {styleMemory?.total ?? 0}
                 </span>
@@ -607,7 +612,7 @@ export function Dashboard() {
                   disabled={running || !topic.trim()}
                   className="btn-cta w-full disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {running ? 'Starting...' : 'Run Pipeline'}
+                  {running ? 'Starting...' : 'Launch campaign'}
                 </button>
               </div>
             </motion.aside>

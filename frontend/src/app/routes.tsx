@@ -1,6 +1,6 @@
 import { createBrowserRouter, Outlet } from "react-router";
 import { Dashboard } from "./screens/Dashboard";
-import { BriefConfiguration } from "./screens/BriefConfiguration";
+import { CampaignWizard } from "./screens/CampaignWizard";
 import { PipelineRunning } from "./screens/PipelineRunning";
 import { ApprovalGate } from "./screens/ApprovalGate";
 import { AuditTrail } from "./screens/AuditTrail";
@@ -33,7 +33,7 @@ export const appRoutes = [
       },
       {
         path: "configure",
-        Component: BriefConfiguration,
+        Component: CampaignWizard,
       },
       {
         path: "approval/:id",

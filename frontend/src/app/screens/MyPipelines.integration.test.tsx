@@ -77,7 +77,7 @@ describe('MyPipelines - B9 API Integration', () => {
     );
 
     // Loading state renders skeleton cards — heading is always present
-    expect(screen.getByText('My Pipelines')).toBeInTheDocument();
+    expect(screen.getByText('Approvals')).toBeInTheDocument();
   });
 
   it('shows empty state when no pipelines exist', async () => {

@@ -160,14 +160,15 @@ export function MyPipelines() {
       <div className="border-b border-border-default">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 md:py-6">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
-            <h2 className="text-xl md:text-2xl text-text-primary">
-              My Pipelines
-            </h2>
+            <div>
+              <h2 className="text-xl md:text-2xl text-text-primary">Approvals</h2>
+              <p className="mt-1 text-xs text-text-secondary">Lumina: Enterprise content, on autopilot.</p>
+            </div>
             <button
               onClick={() => navigate('/')}
               className="w-full md:w-auto px-4 py-2 bg-accent-primary text-white rounded-md hover:bg-accent-primary/90 transition-colors"
             >
-              New pipeline
+              Create campaign
             </button>
           </div>
 
