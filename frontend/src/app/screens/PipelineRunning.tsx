@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
-import { StopCircle } from 'lucide-react';
+import { Brain, FileText, Languages, PenLine, ShieldCheck, StopCircle, TrendingUp, WandSparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 
 import { usePipelineSSE, AGENT_ID_MAP } from '../../hooks/usePipelineSSE';
 import { cancelPipeline } from '../../api/client';
-import { AgentFlowMap } from '../components/AgentFlowMap';
 
 type AgentStatus = 'pending' | 'running' | 'done' | 'warning' | 'error' | 'skipped';
 
@@ -23,6 +22,21 @@ interface LogEntry {
   message: string;
   level: 'info' | 'warning' | 'error' | 'success';
 }
+
+const SWARM_NODES: Array<{
+  id: string;
+  label: string;
+  detail: string;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement> & { className?: string }>;
+}> = [
+  { id: '1', label: 'Intake', detail: 'Intent parsing', icon: Brain },
+  { id: '2', label: 'Trend', detail: 'Signal mining', icon: TrendingUp },
+  { id: '3', label: 'Draft', detail: 'Primary draft', icon: PenLine },
+  { id: '4', label: 'Disclaimer', detail: 'Risk framing', icon: FileText },
+  { id: '5', label: 'Compliance', detail: 'Rule checks', icon: ShieldCheck },
+  { id: '6', label: 'Localization', detail: 'Language tuning', icon: Languages },
+  { id: '7', label: 'Format', detail: 'Channel packaging', icon: WandSparkles },
+];
 
 const INITIAL_AGENTS: Agent[] = [
   { id: '1', name: 'Intake', status: 'pending' },
@@ -113,12 +127,33 @@ export function PipelineRunning() {
       return agent;
     }));
 
+    let logMessage = (eventData.pipeline_status as string) || 'processing';
+    let logLevel: LogEntry['level'] = 'info';
+
+    if (agentName === 'compliance_agent') {
+      const verdict = String(eventData.compliance_verdict || '').toUpperCase();
+      const iter = (eventData.compliance_iterations as number) || 0;
+      const feedback = Array.isArray(eventData.compliance_feedback)
+        ? (eventData.compliance_feedback as unknown[])
+        : [];
+
+      if (verdict === 'REVISE') {
+        logMessage = `REVISE — ${feedback.length} violation(s) found (attempt ${iter}/3). Sending back to draft agent.`;
+        logLevel = 'warning';
+      } else if (verdict === 'PASS') {
+        logMessage = `PASS — All compliance rules satisfied (attempt ${iter})`;
+      } else if (verdict === 'REJECT') {
+        logMessage = 'REJECT — Unfixable violation detected. Escalating for manual review.';
+        logLevel = 'error';
+      }
+    }
+
     setLogs((prev) => [...prev, {
       id: logIdCounter.current++,
       timestamp: new Date().toISOString(),
       agent: agentName,
-      message: (eventData.pipeline_status as string) || 'processing',
-      level: 'info',
+      message: logMessage,
+      level: logLevel,
     }]);
   }, []);
 
@@ -248,6 +283,16 @@ export function PipelineRunning() {
         ? 'error'
         : 'idle';
 
+  const runningIndex = agents.findIndex((agent) => agent.status === 'running');
+  const furthestCompletedIndex = agents.reduce((max, agent, idx) => (
+    ['done', 'warning', 'error', 'skipped'].includes(agent.status) ? Math.max(max, idx) : max
+  ), -1);
+  const packetTargetIndex = complianceBounced ? 2 : (runningIndex >= 0 ? runningIndex : Math.max(0, furthestCompletedIndex));
+  const packetProgress = SWARM_NODES.length > 1
+    ? (packetTargetIndex / (SWARM_NODES.length - 1)) * 100
+    : 0;
+  const complianceAgent = agents.find((agent) => agent.id === '5');
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -280,13 +325,76 @@ export function PipelineRunning() {
       <div className="flex-1 flex flex-col md:flex-row">
         {/* Left Column - Agent Visualization */}
         <div className="flex-1 md:w-3/5 p-4 md:p-6 lg:p-8 overflow-y-auto">
-          <div className="max-w-2xl mx-auto space-y-5">
-            <AgentFlowMap
-              strategy={strategyStatus}
-              copywriter={copywriterStatus}
-              compliance={complianceStatus}
-              complianceBounced={complianceBounced}
-            />
+          <div className="max-w-4xl mx-auto space-y-5">
+            <div className="rounded-2xl border border-border-default bg-white p-4 md:p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-text-primary">Agent Swarm</h3>
+                <span className="text-xs text-text-secondary">Autonomous execution map</span>
+              </div>
+
+              <div className="overflow-x-auto pb-2">
+                <div className="flex min-w-[880px] items-center gap-3">
+                  {SWARM_NODES.map((node, index) => {
+                    const runtime = agents.find((agent) => agent.id === node.id);
+                    const status = runtime?.status || 'pending';
+                    const Icon = node.icon;
+
+                    const nodeStyle = status === 'running'
+                      ? 'border-accent-primary bg-accent-primary/10 shadow-lg shadow-accent-primary/20'
+                      : status === 'done'
+                        ? 'border-success bg-success/10'
+                        : status === 'warning'
+                          ? 'border-warning bg-warning/10'
+                          : status === 'error'
+                            ? 'border-error bg-error/10'
+                            : status === 'skipped'
+                              ? 'border-border-default bg-bg-surface/70 opacity-75'
+                              : 'border-border-default bg-bg-surface';
+
+                    return (
+                      <div key={node.id} className="flex items-center gap-3">
+                        <div className={`w-28 shrink-0 rounded-xl border p-3 transition-colors ${nodeStyle}`}>
+                          <div className="mb-2 flex items-center justify-between">
+                            <Icon className="h-4 w-4 text-text-primary" />
+                            <span className={`h-2.5 w-2.5 rounded-full ${getStatusColor(status)}`} />
+                          </div>
+                          <p className="text-xs font-medium text-text-primary">{node.label}</p>
+                          <p className="mt-1 text-[11px] text-text-secondary">{node.detail}</p>
+                          <p className="mt-1 text-[10px] text-text-tertiary">{runtime ? getStatusLabel(runtime) : 'Pending'}</p>
+                        </div>
+
+                        {index < SWARM_NODES.length - 1 && (
+                          <div className="relative h-1 w-8 overflow-hidden rounded-full bg-border-default/70">
+                            <div
+                              className={`h-full rounded-full transition-colors ${index < packetTargetIndex ? 'bg-accent-primary' : 'bg-border-default/70'}`}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="relative mt-5 h-12 overflow-hidden rounded-xl border border-border-default bg-bg-primary">
+                <div className="absolute left-4 right-4 top-1/2 h-1 -translate-y-1/2 rounded-full bg-border-default/60" />
+                <motion.div
+                  animate={{ left: `calc(${packetProgress}% + 1rem)` }}
+                  transition={{ type: 'spring', stiffness: 160, damping: 22 }}
+                  className={`absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-lg ${complianceBounced ? 'bg-warning shadow-warning/50' : 'bg-accent-primary shadow-accent-primary/50'}`}
+                />
+
+                {complianceBounced && complianceAgent?.status === 'warning' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute right-3 top-2 rounded-full border border-warning/40 bg-warning/10 px-3 py-1 text-[11px] font-medium text-warning"
+                  >
+                    Fixing compliance error...
+                  </motion.div>
+                )}
+              </div>
+            </div>
 
             <div className="rounded-2xl border border-border-default bg-white p-4 text-sm text-text-secondary">
               <p>
@@ -298,65 +406,6 @@ export function PipelineRunning() {
               </p>
             </div>
 
-            {agents.map((agent, index) => (
-              <div key={agent.id}>
-                <div
-                  className={`relative bg-bg-surface border rounded-[--radius-md] p-4 h-18 flex items-center justify-between transition-all ${
-                    agent.status === 'running'
-                      ? 'border-accent-primary shadow-lg shadow-accent-primary/20'
-                      : agent.status === 'warning'
-                      ? 'border-warning shadow-lg shadow-warning/20'
-                      : 'border-border-default'
-                  }`}
-                >
-                  {/* Progress bar for running state */}
-                  {agent.status === 'running' && (
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-bg-elevated overflow-hidden rounded-b-[--radius-md]">
-                      <div className="h-full w-1/4 bg-accent-primary animate-progress" />
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-4">
-                    {/* Status Dot */}
-                    <div className={`w-2.5 h-2.5 rounded-full ${getStatusColor(agent.status)}`} />
-
-                    {/* Agent Name */}
-                    <span className="text-text-primary font-medium">{agent.name}</span>
-                  </div>
-
-                  {/* Status Label */}
-                  <span
-                    className={`text-sm ${
-                      agent.status === 'warning'
-                        ? 'text-warning'
-                        : agent.status === 'running'
-                        ? 'text-accent-primary'
-                        : 'text-text-secondary'
-                    }`}
-                  >
-                    {getStatusLabel(agent)}
-                  </span>
-                </div>
-
-                {/* Connecting Line */}
-                {index < agents.length - 1 && (
-                  <div className="flex justify-center py-2">
-                    <div
-                      className={`w-0.5 h-6 ${
-                        agents[index + 1].status !== 'pending'
-                          ? 'bg-accent-primary'
-                          : 'bg-border-default border-dashed'
-                      }`}
-                      style={
-                        agents[index + 1].status === 'pending'
-                          ? { borderLeft: '1px dashed', background: 'transparent' }
-                          : undefined
-                      }
-                    />
-                  </div>
-                )}
-              </div>
-            ))}
           </div>
 
           {pipelineError && (

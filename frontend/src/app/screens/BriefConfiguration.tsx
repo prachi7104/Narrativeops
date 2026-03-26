@@ -7,8 +7,6 @@ import {
   MessageCircle,
   FileText,
   Newspaper,
-  ChevronDown,
-  ChevronUp,
   Loader2,
   CircleCheck,
   TriangleAlert,
@@ -96,10 +94,9 @@ export function BriefConfiguration() {
   const [selectedChannels, setSelectedChannels] = useState<OutputOption[]>(['blog', 'twitter']);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['english']);
   const [selectedTone, setSelectedTone] = useState('Accessible');
-  const [engagementExpanded, setEngagementExpanded] = useState(false);
-  const [engagementData, setEngagementData] = useState('{\n  "scenario": 3,\n  "metrics": {\n    "engagement_rate": 0.45\n  }\n}');
+  const [simulateDataPivot, setSimulateDataPivot] = useState(false);
 
-  const detectCategory = (text: string): 'mutual_fund' | 'fintech' | 'general' => {
+  const detectContentDomain = (text: string): 'mutual_fund' | 'fintech' | 'general' => {
     const lower = text.toLowerCase();
     if (lower.includes('mutual fund') || lower.includes('sip') || lower.includes('nav')) {
       return 'mutual_fund';
@@ -114,7 +111,7 @@ export function BriefConfiguration() {
   useEffect(() => {
     if (!brief.trim()) return;
     
-    const category = detectCategory(brief);
+    const category = detectContentDomain(brief);
     let suggestedTone = 'Accessible';
     let suggestedChannels: OutputOption[] = ['blog', 'twitter'];
 
@@ -159,27 +156,37 @@ export function BriefConfiguration() {
   };
 
   const toggleLanguage = (lang: string) => {
-    setSelectedLanguages((prev) =>
-      prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang]
-    );
+    setSelectedLanguages((prev) => {
+      const next = prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang];
+      if (lang === 'hindi' && !prev.includes('hindi')) {
+        setSelectedChannels((channels) =>
+          channels.includes('whatsapp') ? channels : [...channels, 'whatsapp']
+        );
+      }
+      return next;
+    });
   };
 
   const handleRunPipeline = async () => {
-    let parsedEngagementData: Record<string, unknown> | null = null;
-
-    if (engagementData.trim()) {
-      try {
-        parsedEngagementData = JSON.parse(engagementData) as Record<string, unknown>;
-      } catch {
-        parsedEngagementData = null;
-      }
-    }
+    const parsedEngagementData: Record<string, unknown> | null = simulateDataPivot
+      ? {
+          scenario: 'video_to_text_pivot',
+          route: 'video_to_text',
+          shift_summary: 'Video engagement dropped; prioritize concise text variants for distribution.',
+          metrics: {
+            source_channel: 'video',
+            target_channel: 'text',
+            engagement_delta_pct: -28,
+            watch_time_delta_pct: -19,
+          },
+        }
+      : null;
 
     setIsRunning(true);
     setRunError(null);
 
     try {
-      const contentCategory = detectCategory(brief);
+      const contentDomain = detectContentDomain(brief);
       const targetLanguages: string[] = ['en'];
       if (selectedLanguages.includes('hindi')) targetLanguages.push('hi');
 
@@ -187,7 +194,8 @@ export function BriefConfiguration() {
         {
           topic: brief.slice(0, 100),
           description: brief,
-          content_category: contentCategory,
+          content_domain: contentDomain,
+          content_category: contentDomain,
           output_options: selectedChannels,
           tone: selectedTone.toLowerCase(),
           target_languages: targetLanguages,
@@ -195,7 +203,7 @@ export function BriefConfiguration() {
         sessionId,
         parsedEngagementData || null,
       );
-      navigate('/pipeline/' + result.run_id, { state: { category: contentCategory } });
+      navigate('/pipeline/' + result.run_id, { state: { category: contentDomain } });
     } catch {
       setRunError('Failed to start pipeline. Please try again.');
     } finally {
@@ -292,7 +300,7 @@ export function BriefConfiguration() {
           {/* Section 1 - Brief */}
           <div>
             <label className="block text-text-primary mb-2 text-sm font-medium">
-              Content brief
+              Campaign Intent
             </label>
             <textarea
               value={brief}
@@ -403,31 +411,25 @@ export function BriefConfiguration() {
             </div>
           </div>
 
-          {/* Section 5 - Connect Analytics (Collapsible) */}
+          {/* Section 5 - Simulated pivot data */}
           <div>
-            <button
-              onClick={() => setEngagementExpanded(!engagementExpanded)}
-              className="w-full flex items-center justify-between text-text-primary mb-3 text-sm font-medium hover:text-accent-primary transition-colors"
-            >
-              <span>Connect Analytics</span>
-              {engagementExpanded ? (
-                <ChevronUp className="w-4 h-4" />
-              ) : (
-                <ChevronDown className="w-4 h-4" />
-              )}
-            </button>
-            {engagementExpanded && (
+            <div className="flex items-center justify-between rounded-xl border border-border-default bg-bg-surface px-4 py-3">
               <div>
-                <textarea
-                  value={engagementData}
-                  onChange={(e) => setEngagementData(e.target.value)}
-                  className="w-full min-h-[100px] bg-bg-surface border border-border-default rounded-md p-4 text-text-primary resize-none focus:border-accent-primary focus:outline-none transition-colors font-mono text-xs"
-                />
-                <p className="text-xs text-text-tertiary mt-2">
-                  Use simulated analytics metrics to optimize Scenario 3 behavior
-                </p>
+                <p className="text-sm font-medium text-text-primary">Simulate Data Pivot Scenario: Video &gt; Text</p>
+                <p className="mt-1 text-xs text-text-tertiary">Injects a synthetic performance pivot payload when launching the pipeline.</p>
               </div>
-            )}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={simulateDataPivot}
+                onClick={() => setSimulateDataPivot((prev) => !prev)}
+                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${simulateDataPivot ? 'bg-accent-primary' : 'bg-bg-elevated'}`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${simulateDataPivot ? 'translate-x-6' : 'translate-x-1'}`}
+                />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -468,6 +470,13 @@ export function BriefConfiguration() {
             </div>
           </div>
 
+          {runError && (
+            <div className="rounded-xl border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">
+              <p className="font-medium">Unable to start pipeline</p>
+              <p className="mt-1 text-xs text-text-secondary">{runError}</p>
+            </div>
+          )}
+
           <button
             onClick={handleRunPipeline}
             disabled={isRunning}
@@ -482,7 +491,6 @@ export function BriefConfiguration() {
               'Launch campaign'
             )}
           </button>
-          {runError && <p className="mt-2 text-sm text-amber-500">{runError}</p>}
         </div>
       </div>
 

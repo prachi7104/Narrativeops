@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
-import { Twitter, Linkedin, MessageCircle, FileText, Edit3, Check, X, ArrowLeft } from 'lucide-react';
+import { Twitter, Linkedin, MessageCircle, FileText, Edit3, ArrowLeft } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { motion } from 'motion/react';
+import { motion, useAnimation, useMotionValue, useTransform } from 'motion/react';
 
-import { getOutputs, getMetrics, captureDiff, approvePipeline, rejectPipeline, getAuditTrail } from '../api/client';
-import { useIsMobile } from '../components/ui/use-mobile';
-import { SwipeApprovalCard } from '../components/SwipeApprovalCard';
+import {
+  getOutputs,
+  getMetrics,
+  captureDiff,
+  approvePipeline,
+  rejectPipeline,
+  getAuditTrail,
+} from '../api/client';
 import type {
   AuditEvent,
   ComplianceAnnotation,
@@ -80,6 +85,12 @@ function mapOutputsToContent(outputs: PipelineOutput[]): ChannelContent {
     twitterCombined = '';
   }
 
+  const hindiArticle = outputs.find((o) => o.channel === 'article' && o.language === 'hi')?.content || '';
+  const hindiWhatsapp = outputs.find((o) => o.channel === 'whatsapp' && o.language === 'hi')?.content || '';
+  const hindiContent = hindiArticle
+    ? `${hindiArticle}\n\n---\n📱 WhatsApp variant (Hindi):\n\n${hindiWhatsapp}`
+    : hindiWhatsapp;
+
   return {
     blog: blogRaw,
     faq: outputs.find((o) => o.channel === 'faq')?.content || '',
@@ -88,8 +99,8 @@ function mapOutputsToContent(outputs: PipelineOutput[]): ChannelContent {
     explainer_box: outputs.find((o) => o.channel === 'explainer_box')?.content || '',
     twitter: twitterCombined,
     linkedin: outputs.find((o) => o.channel === 'linkedin')?.content || '',
-    whatsapp: outputs.find((o) => o.channel === 'whatsapp')?.content || '',
-    hindi: outputs.find((o) => o.language === 'hi')?.content || '',
+    whatsapp: outputs.find((o) => o.channel === 'whatsapp' && o.language === 'en')?.content || '',
+    hindi: hindiContent,
   };
 }
 
@@ -155,7 +166,11 @@ export function ApprovalGate() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [toast, setToast] = useState('');
   const [unsavedTabs, setUnsavedTabs] = useState<Set<Channel>>(new Set());
-  const isMobile = useIsMobile();
+  const [swipeLocked, setSwipeLocked] = useState(false);
+  const swipeX = useMotionValue(0);
+  const swipeControls = useAnimation();
+  const approveOverlayOpacity = useTransform(swipeX, [20, 180], [0, 1]);
+  const rejectOverlayOpacity = useTransform(swipeX, [-20, -180], [0, 1]);
 
   const hasAnyGeneratedOutput = [
     content.blog,
@@ -176,7 +191,11 @@ export function ApprovalGate() {
     }
 
     try {
-      const [outputs, loadedMetrics, auditEvents] = await Promise.all([getOutputs(id), getMetrics(id), getAuditTrail(id)]);
+      const [outputs, loadedMetrics, auditEvents] = await Promise.all([
+        getOutputs(id),
+        getMetrics(id),
+        getAuditTrail(id),
+      ]);
       const mapped = mapOutputsToContent(outputs);
       setContent(mapped);
       setEditedContent(mapped);
@@ -540,48 +559,38 @@ export function ApprovalGate() {
               </div>
               <p className="text-text-secondary text-sm">Pipeline complete, awaiting your decision.</p>
               <p className="text-text-secondary text-xs mt-1">Lumina: Enterprise content, on autopilot.</p>
-            </div>
-
-            <div className="flex gap-3 w-full md:w-auto">
-              <button
-                onClick={handleApprove}
-                className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 md:px-6 py-2.5 bg-success text-white rounded-md hover:bg-success/90 transition-colors font-medium"
-              >
-                <Check className="w-4 h-4" />
-                <span className="hidden md:inline">Approve & publish</span>
-                <span className="md:hidden">Approve</span>
-              </button>
-              <button onClick={handleReject} className="flex items-center gap-2 px-4 py-2.5 text-text-secondary hover:text-error transition-colors">
-                <X className="w-4 h-4" />
-                <span className="hidden md:inline">Reject</span>
-              </button>
+              <p className="text-xs text-text-tertiary mt-2">Swipe right to approve. Swipe left to send back for rewrite.</p>
             </div>
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-4 md:gap-6 border-b border-border-default -mb-px overflow-x-auto">
-            {tabs.map((tab) => {
-              const Icon = getChannelIcon(tab.id);
-              const isActive = activeTab === tab.id;
-              const hasUnsaved = unsavedTabs.has(tab.id);
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-1 py-3 border-b-2 transition-colors relative ${
-                    isActive
-                      ? 'border-accent-primary text-text-primary'
-                      : 'border-transparent text-text-secondary hover:text-text-primary'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span className="text-sm font-medium">{tab.label}</span>
-                  {hasUnsaved && (
-                    <div className="absolute -top-1 -right-2 w-2 h-2 bg-warning rounded-full" />
-                  )}
-                </button>
-              );
-            })}
+          <div className="relative">
+            <div className="flex gap-4 md:gap-6 border-b border-border-default -mb-px overflow-x-auto pr-6">
+              {tabs.map((tab) => {
+                const Icon = getChannelIcon(tab.id);
+                const isActive = activeTab === tab.id;
+                const hasUnsaved = unsavedTabs.has(tab.id);
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-2 px-1 py-3 border-b-2 transition-colors relative whitespace-nowrap ${
+                      isActive
+                        ? 'border-accent-primary text-text-primary'
+                        : 'border-transparent text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span className="text-sm font-medium">{tab.label}</span>
+                    {hasUnsaved && (
+                      <div className="absolute -top-1 -right-2 w-2 h-2 bg-warning rounded-full" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-bg-primary to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-bg-primary to-transparent" />
           </div>
         </div>
       </div>
@@ -605,17 +614,51 @@ export function ApprovalGate() {
             </div>
           )}
 
-          {!editMode && isMobile ? (
-            <SwipeApprovalCard
-              title={tabs.find((tab) => tab.id === activeTab)?.label || 'Content'}
-              content={editedContent[activeTab] || ''}
-              onApprove={() => {
-                void handleApprove();
-              }}
-              onReject={() => {
-                void handleReject();
-              }}
-            />
+          {!editMode ? (
+            <div className="relative">
+              <motion.div
+                style={{ opacity: approveOverlayOpacity }}
+                className="pointer-events-none absolute right-5 top-5 z-20 rounded-full border border-success/40 bg-success/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-success"
+              >
+                Approve
+              </motion.div>
+              <motion.div
+                style={{ opacity: rejectOverlayOpacity }}
+                className="pointer-events-none absolute left-5 top-5 z-20 rounded-full border border-warning/40 bg-warning/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-warning"
+              >
+                Rewrite
+              </motion.div>
+
+              <motion.div
+                drag={swipeLocked ? false : 'x'}
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={0.18}
+                style={{ x: swipeX }}
+                animate={swipeControls}
+                onDragEnd={async (_, info) => {
+                  if (swipeLocked) return;
+
+                  if (info.offset.x > 150) {
+                    setSwipeLocked(true);
+                    await swipeControls.start({ x: 360, opacity: 0, transition: { duration: 0.22 } });
+                    await handleApprove();
+                    return;
+                  }
+
+                  if (info.offset.x < -150) {
+                    setSwipeLocked(true);
+                    await swipeControls.start({ x: -360, opacity: 0, transition: { duration: 0.22 } });
+                    await handleReject();
+                    return;
+                  }
+
+                  void swipeControls.start({ x: 0, transition: { type: 'spring', stiffness: 320, damping: 24 } });
+                }}
+                className="cursor-grab active:cursor-grabbing"
+              >
+                {renderContent()}
+              </motion.div>
+            </div>
           ) : (
             renderContent()
           )}
@@ -761,6 +804,51 @@ export function ApprovalGate() {
             )}
           </div>
 
+          {/* Engagement Strategy */}
+          {engagementStrategy && (
+            <div className="bg-bg-surface border border-border-default rounded-[--radius-md] p-4">
+              <h3 className="text-text-primary mb-4 text-sm font-medium">Engagement strategy</h3>
+              <div className="space-y-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-text-secondary">Pivot recommendation</span>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 font-medium ${
+                      engagementStrategy.pivot_recommended
+                        ? 'border-warning/30 text-warning bg-warning/10'
+                        : 'border-success/30 text-success bg-success/10'
+                    }`}
+                  >
+                    {engagementStrategy.pivot_recommended ? 'Recommended' : 'Not needed'}
+                  </span>
+                </div>
+                {engagementStrategy.pivot_reason && (
+                  <p className="text-text-secondary">{engagementStrategy.pivot_reason}</p>
+                )}
+                {engagementStrategy.strategy_recommendation && (
+                  <p className="text-text-primary">{engagementStrategy.strategy_recommendation}</p>
+                )}
+
+                {engagementStrategy.content_calendar && engagementStrategy.content_calendar.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-text-tertiary">Content calendar</p>
+                    {engagementStrategy.content_calendar.slice(0, 2).map((weekBlock) => (
+                      <div key={weekBlock.week} className="rounded-md border border-border-default bg-bg-primary p-2">
+                        <p className="text-text-primary font-medium mb-1">Week {weekBlock.week}</p>
+                        <div className="space-y-1">
+                          {weekBlock.items.slice(0, 3).map((item, idx) => (
+                            <p key={`${weekBlock.week}-${idx}`} className="text-text-secondary">
+                              {item.channel}: {item.topic}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Audit Trail */}
           <div className="bg-bg-surface border border-border-default rounded-[--radius-md] p-4">
             <h3 className="text-text-primary mb-3 text-sm font-medium">Audit trail</h3>
@@ -792,6 +880,43 @@ export function ApprovalGate() {
           </div>
         </div>
       </div>
+
+      {rejectDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            aria-label="Close rejection dialog"
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setRejectDialogOpen(false)}
+          />
+          <div className="relative w-full max-w-lg rounded-lg border border-border-default bg-bg-surface p-5 shadow-xl">
+            <h3 className="text-text-primary text-lg mb-2">Send back for rewrite</h3>
+            <p className="text-sm text-text-secondary mb-3">
+              Add a clear reason so the next draft can address this feedback.
+            </p>
+            <textarea
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="Example: Tone is too promotional. Keep claims factual and include source-backed numbers."
+              className="w-full min-h-[130px] bg-bg-primary border border-border-default rounded-md p-3 text-text-primary resize-none focus:border-warning focus:outline-none"
+            />
+            <div className="mt-4 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setRejectDialogOpen(false)}
+                className="px-4 py-2 rounded-md text-text-secondary hover:text-text-primary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={!rejectionReason.trim()}
+                className="px-4 py-2 rounded-md bg-warning text-black hover:bg-warning/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Reject and rewrite
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

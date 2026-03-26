@@ -11,11 +11,13 @@ import {
   Clock,
   IndianRupee,
   CheckCircle,
+  CheckCircle2,
   Edit3,
   ArrowRight,
   X,
   Upload,
   AlertCircle,
+  Loader2,
   RotateCw,
 } from 'lucide-react';
 
@@ -37,7 +39,7 @@ interface TemplateTile {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement> & { className?: string }>;
   borderGradient: string;
   outputOptions: string[];
-  category: string;
+  category: 'general' | 'fintech' | 'mutual_fund';
 }
 
 const TEMPLATE_TILES: TemplateTile[] = [
@@ -47,7 +49,7 @@ const TEMPLATE_TILES: TemplateTile[] = [
     icon: FileText,
     borderGradient: 'linear-gradient(90deg, #7C3AED, #8B5CF6)',
     outputOptions: ['blog'],
-    category: 'blog',
+    category: 'general',
   },
   {
     id: 'twitter',
@@ -55,7 +57,7 @@ const TEMPLATE_TILES: TemplateTile[] = [
     icon: Twitter,
     borderGradient: 'linear-gradient(90deg, #06B6D4, #22D3EE)',
     outputOptions: ['twitter'],
-    category: 'social',
+    category: 'general',
   },
   {
     id: 'linkedin',
@@ -63,7 +65,7 @@ const TEMPLATE_TILES: TemplateTile[] = [
     icon: Linkedin,
     borderGradient: 'linear-gradient(90deg, #2563EB, #3B82F6)',
     outputOptions: ['linkedin'],
-    category: 'social',
+    category: 'general',
   },
   {
     id: 'whatsapp',
@@ -71,7 +73,7 @@ const TEMPLATE_TILES: TemplateTile[] = [
     icon: MessageCircle,
     borderGradient: 'linear-gradient(90deg, #16A34A, #22C55E)',
     outputOptions: ['whatsapp'],
-    category: 'messaging',
+    category: 'general',
   },
   {
     id: 'op_ed',
@@ -79,7 +81,7 @@ const TEMPLATE_TILES: TemplateTile[] = [
     icon: Newspaper,
     borderGradient: 'linear-gradient(90deg, #D97706, #F59E0B)',
     outputOptions: ['op_ed'],
-    category: 'editorial',
+    category: 'general',
   },
   {
     id: 'explainer_box',
@@ -87,7 +89,7 @@ const TEMPLATE_TILES: TemplateTile[] = [
     icon: HelpCircle,
     borderGradient: 'linear-gradient(90deg, #E11D48, #FB7185)',
     outputOptions: ['explainer_box'],
-    category: 'editorial',
+    category: 'general',
   },
 ];
 
@@ -126,6 +128,17 @@ function formatDate(createdAt: string): string {
   const d = new Date(createdAt);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function detectContentDomain(text: string): 'mutual_fund' | 'fintech' | 'general' {
+  const lower = text.toLowerCase();
+  if (lower.includes('mutual fund') || lower.includes('sip') || lower.includes('nav')) {
+    return 'mutual_fund';
+  }
+  if (lower.includes('fintech') || lower.includes('payment') || lower.includes('insurance')) {
+    return 'fintech';
+  }
+  return 'general';
 }
 
 /* ------------------------------------------------------------------ */
@@ -193,11 +206,16 @@ export function Dashboard() {
   const [langHi, setLangHi] = useState(false);
   const [sessionId, setSessionId] = useState(() => generateId());
   const [running, setRunning] = useState(false);
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false);
+  const [pdfRulesExtracted, setPdfRulesExtracted] = useState<number | null>(null);
+  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const openDrawer = useCallback((tile: TemplateTile) => {
     setSelectedOutputOptions(tile.outputOptions);
     setSelectedCategory(tile.category);
+    setPdfRulesExtracted(null);
+    setPdfUploadError(null);
     setDrawerOpen(true);
   }, []);
 
@@ -222,23 +240,25 @@ export function Dashboard() {
     try {
       const langs: string[] = ['en'];
       if (langHi) langs.push('hi');
+      const contentDomain = detectContentDomain(`${topic} ${description}`) || selectedCategory;
 
       const brief: Record<string, unknown> = {
         topic: topic.trim(),
         description: description.trim(),
-        content_category: selectedCategory,
+        content_domain: contentDomain,
+        content_category: contentDomain,
         tone,
         target_languages: langs,
         output_options: selectedOutputOptions,
       };
 
       const result = await startPipeline(
-        brief as { topic: string; description: string; content_category?: string },
+        brief as { topic: string; description: string; content_domain?: string; content_category?: string },
         sessionId,
       );
 
       closeDrawer();
-      navigate(`/pipeline/${result.run_id}`, { state: { category: selectedCategory } });
+      navigate(`/pipeline/${result.run_id}`, { state: { category: contentDomain } });
     } catch (err) {
       console.error(err);
     } finally {
@@ -249,10 +269,20 @@ export function Dashboard() {
   const handleUploadGuide = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setIsUploadingPdf(true);
+    setPdfUploadError(null);
+    setPdfRulesExtracted(null);
     try {
-      await uploadBrandGuide(file, sessionId);
+      const uploadResult = await uploadBrandGuide(file, sessionId);
+      setPdfRulesExtracted(uploadResult.rules_extracted);
+      if (uploadResult.error) {
+        setPdfUploadError(uploadResult.error);
+      }
     } catch (err) {
       console.error(err);
+      setPdfUploadError('Failed to process PDF. You can still launch without it.');
+    } finally {
+      setIsUploadingPdf(false);
     }
   };
 
@@ -601,6 +631,27 @@ export function Dashboard() {
                     <Upload className="w-4 h-4" />
                     Upload brand guide
                   </button>
+
+                  {isUploadingPdf && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-text-secondary">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Extracting rules...</span>
+                    </div>
+                  )}
+
+                  {!isUploadingPdf && pdfRulesExtracted !== null && !pdfUploadError && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-success">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>{pdfRulesExtracted} rules extracted</span>
+                    </div>
+                  )}
+
+                  {pdfUploadError && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-warning">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>{pdfUploadError}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

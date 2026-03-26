@@ -7,7 +7,6 @@ import {
   ShieldCheck,
   Folder,
   Settings as SettingsIcon,
-  MoreHorizontal,
   Search,
   ChevronLeft,
   ChevronRight,
@@ -41,17 +40,17 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/', label: 'Dashboard', icon: House, end: true },
       { to: '/configure', label: 'Create', icon: PlusCircle },
-      { to: '/pipelines', label: 'Approvals', icon: Inbox },
+      { to: '/pipelines', label: 'Active Workflows', icon: Inbox },
     ],
   },
   {
-    title: 'GOVERNANCE',
+    title: 'GOVERNANCE HUB',
     items: [
       { to: '/brand-hub', label: 'Brand Hub', icon: ShieldCheck },
     ],
   },
   {
-    title: 'ASSETS',
+    title: 'ASSET LIBRARY',
     items: [
       { to: '/gallery', label: 'Asset Library', icon: Folder },
       { to: '/settings', label: 'Settings', icon: SettingsIcon },
@@ -60,29 +59,22 @@ const NAV_SECTIONS: NavSection[] = [
 ];
 
 const MOBILE_TABS: MobileTab[] = [
-  { to: '/', label: 'Dashboard', icon: House, end: true },
-  { to: '/configure', label: 'Create', icon: PlusCircle },
+  { to: '/', label: 'Home', icon: House, end: true },
+  { to: '/configure', label: 'New Pipeline', icon: PlusCircle },
   { to: '/pipelines', label: 'Approvals', icon: Inbox },
   { to: '/brand-hub', label: 'Brand Hub', icon: ShieldCheck },
 ];
 
-const OVERFLOW_LINKS: NavItem[] = [
-  { to: '/gallery', label: 'Asset Library', icon: Folder },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon },
-];
-
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
-  const [showOverflow, setShowOverflow] = useState(false);
   const isMobile = useIsMobile();
 
   return (
     <div className="flex min-h-screen bg-bg-primary">
-      {!isMobile && (
-        <motion.aside
+      <motion.aside
           animate={{ width: collapsed ? 64 : 260 }}
           transition={{ duration: 0.25, ease: 'easeInOut' }}
-          className="fixed inset-y-0 left-0 z-30 flex flex-col"
+          className="fixed inset-y-0 left-0 z-30 hidden flex-col md:flex"
           style={{
             background: 'rgba(244, 245, 247, 0.7)',
             backdropFilter: 'blur(12px)',
@@ -148,8 +140,7 @@ export function AppLayout() {
               </div>
             ))}
           </nav>
-        </motion.aside>
-      )}
+      </motion.aside>
 
       <motion.div
         className="flex min-w-0 flex-1 flex-col"
@@ -186,64 +177,33 @@ export function AppLayout() {
         </main>
 
         {isMobile && (
-          <>
-            <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/70 bg-white/80 px-2 py-2 backdrop-blur-xl">
-              <div className="mx-auto flex max-w-md items-center justify-between">
-                {MOBILE_TABS.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <NavLink
-                      key={tab.to}
-                      to={tab.to}
-                      end={tab.end}
-                      className={({ isActive }) => `flex min-h-11 min-w-16 flex-col items-center justify-center rounded-xl px-2 text-[11px] transition ${isActive ? 'bg-accent-primary/10 text-accent-primary' : 'text-text-secondary'}`}
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <div className="relative">
-                            <Icon className="h-5 w-5" />
-                            {tab.label === 'Approvals' && (
-                              <span className={`absolute -right-2 -top-1 h-2.5 w-2.5 rounded-full ${isActive ? 'bg-accent-primary' : 'bg-warning'}`} />
-                            )}
-                          </div>
-                          <span>{tab.label}</span>
-                        </>
-                      )}
-                    </NavLink>
-                  );
-                })}
-
-                <button
-                  onClick={() => setShowOverflow((prev) => !prev)}
-                  className="flex min-h-11 min-w-16 flex-col items-center justify-center rounded-xl px-2 text-[11px] text-text-secondary"
-                  aria-expanded={showOverflow}
-                  aria-label="Open navigation overflow"
-                >
-                  <MoreHorizontal className="h-5 w-5" />
-                  <span>More</span>
-                </button>
-              </div>
-            </nav>
-
-            {showOverflow && (
-              <div className="fixed bottom-20 right-4 z-50 w-56 rounded-2xl border border-border-default bg-white p-2 shadow-lg">
-                {OVERFLOW_LINKS.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setShowOverflow(false)}
-                      className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-text-secondary hover:bg-bg-surface hover:text-text-primary"
-                    >
-                      <Icon className="h-4 w-4" />
-                      {item.label}
-                    </NavLink>
-                  );
-                })}
-              </div>
-            )}
-          </>
+          <nav className="fixed bottom-0 left-0 z-50 w-full border-t border-border-default bg-white/80 px-2 py-2 backdrop-blur-xl">
+            <div className="mx-auto flex max-w-md items-center justify-between">
+              {MOBILE_TABS.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <NavLink
+                    key={tab.to}
+                    to={tab.to}
+                    end={tab.end}
+                    className={({ isActive }) => `flex min-h-11 min-w-16 flex-col items-center justify-center rounded-xl px-2 text-[11px] transition ${isActive ? 'bg-accent-primary/10 text-accent-primary' : 'text-text-secondary'}`}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <div className="relative">
+                          <Icon className="h-5 w-5" />
+                          {tab.label === 'Approvals' && (
+                            <span className={`absolute -right-2 -top-1 h-2.5 w-2.5 rounded-full ${isActive ? 'bg-accent-primary' : 'bg-warning'}`} />
+                          )}
+                        </div>
+                        <span>{tab.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
+            </div>
+          </nav>
         )}
       </motion.div>
     </div>

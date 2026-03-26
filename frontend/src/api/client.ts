@@ -5,6 +5,7 @@ import type {
   CorrectionsSummaryResponse,
   DashboardSummary,
   DiffResponse,
+  EngagementStrategyResponse,
   PipelineMetrics,
   PipelineOutput,
   PipelineRun,
@@ -29,7 +30,7 @@ function isNotFound(response: Response): boolean {
 }
 
 export async function startPipeline(
-  brief: { topic: string; description: string; content_category?: string; output_options?: string[]; tone?: string; target_languages?: string[] },
+  brief: { topic: string; description: string; content_domain?: string; content_category?: string; output_options?: string[]; tone?: string; target_languages?: string[] },
   sessionId?: string,
   engagementData?: Record<string, unknown> | null,
 ): Promise<{ run_id: string; status: string }> {
@@ -82,12 +83,12 @@ export async function approvePipeline(runId: string): Promise<{ status: string }
   return (await response.json()) as { status: string };
 }
 
-export async function rejectPipeline(runId: string): Promise<{ status: string }> {
+export async function rejectPipeline(runId: string, rejectionReason = ""): Promise<{ status: string }> {
   const endpoint = `${BASE_URL}/api/pipeline/${runId}/approve`;
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ approved: false }),
+    body: JSON.stringify({ approved: false, rejection_reason: rejectionReason }),
   });
 
   await assertOk(response, endpoint);
@@ -149,6 +150,13 @@ export async function getAuditTrail(runId: string): Promise<AuditEvent[]> {
   await assertOk(response, endpoint);
   const data = (await response.json()) as { events: AuditEvent[] };
   return data.events;
+}
+
+export async function getPipelineStrategy(runId: string): Promise<EngagementStrategyResponse> {
+  const endpoint = `${BASE_URL}/api/pipeline/${runId}/strategy`;
+  const response = await fetch(endpoint);
+  await assertOk(response, endpoint);
+  return (await response.json()) as EngagementStrategyResponse;
 }
 
 export function getAuditPdfUrl(runId: string): string {
