@@ -12,6 +12,18 @@ def _is_known_json_validation_error(exc: Exception) -> bool:
     return "json_validate_failed" in message or "Failed to generate JSON" in message
 
 
+def _is_known_live_quota_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    quota_indicators = [
+        "rate limited",
+        "rate limit",
+        "quota exceeded",
+        "resource_exhausted",
+        "error code: 429",
+    ]
+    return any(indicator in message for indicator in quota_indicators)
+
+
 def _invoke_with_live_model_guard(pipeline, state, config, attempts: int = 2):
     last_error: Exception | None = None
     for _ in range(attempts):
@@ -21,6 +33,11 @@ def _invoke_with_live_model_guard(pipeline, state, config, attempts: int = 2):
             last_error = exc
             if _is_known_json_validation_error(exc):
                 continue
+            if _is_known_live_quota_error(exc):
+                pytest.skip(
+                    "Skipping smoke test due to external live-model quota/rate-limit: "
+                    f"{exc}"
+                )
             raise
 
     assert last_error is not None

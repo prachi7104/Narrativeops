@@ -19,6 +19,19 @@ pytestmark = [
 ]
 
 
+def _run_with_live_quota_guard(state):
+    try:
+        return run_localization_agent(state)
+    except RuntimeError as exc:
+        message = str(exc).lower()
+        if any(
+            marker in message
+            for marker in ["rate limited", "rate limit", "quota exceeded", "resource_exhausted", "429"]
+        ):
+            pytest.skip(f"Skipping live integration due to provider quota/rate-limit: {exc}")
+        raise
+
+
 def test_hindi_output_contains_devanagari_script(minimal_content_state):
     draft = (
         "##INTRO\n"
@@ -31,7 +44,7 @@ def test_hindi_output_contains_devanagari_script(minimal_content_state):
     )
     state = minimal_content_state(draft)
 
-    result = run_localization_agent(state)
+    result = _run_with_live_quota_guard(state)
     output = result["localized_hi"]
 
     assert re.search(r"[\u0900-\u097F]", output) is not None
@@ -49,7 +62,7 @@ def test_hindi_preserves_section_markers(minimal_content_state):
     )
     state = minimal_content_state(draft)
 
-    result = run_localization_agent(state)
+    result = _run_with_live_quota_guard(state)
     output = result["localized_hi"]
 
     assert "##INTRO" in output
@@ -68,7 +81,7 @@ def test_hindi_does_not_use_western_references(minimal_content_state):
     )
     state = minimal_content_state(draft)
 
-    result = run_localization_agent(state)
+    result = _run_with_live_quota_guard(state)
     output = result["localized_hi"]
 
     assert "401k" not in output.lower()
@@ -85,7 +98,7 @@ def test_hindi_preserves_financial_terms_correctly(minimal_content_state):
     )
     state = minimal_content_state(draft)
 
-    result = run_localization_agent(state)
+    result = _run_with_live_quota_guard(state)
     output = result["localized_hi"]
 
     assert ("एसआईपी" in output) or ("SIP" in output)

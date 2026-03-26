@@ -7,6 +7,19 @@ pytestmark = pytest.mark.integration
 REVISE_VERDICTS = {"REVISE", "REVISION REQUIRED"}
 
 
+def _run_with_live_quota_guard(state):
+    try:
+        return run_compliance_agent(state)
+    except RuntimeError as exc:
+        message = str(exc).lower()
+        if any(
+            marker in message
+            for marker in ["rate limited", "rate limit", "quota exceeded", "resource_exhausted", "429"]
+        ):
+            pytest.skip(f"Skipping live integration due to provider quota/rate-limit: {exc}")
+        raise
+
+
 def test_scenario_2_catches_guaranteed_returns(minimal_content_state):
     draft = (
         "##INTRO\n"
@@ -18,7 +31,7 @@ def test_scenario_2_catches_guaranteed_returns(minimal_content_state):
     )
     state = minimal_content_state(draft)
 
-    result = run_compliance_agent(state)
+    result = _run_with_live_quota_guard(state)
 
     verdict = result["compliance_verdict"]
     annotations = result["compliance_feedback"]
@@ -50,7 +63,7 @@ def test_clean_content_gets_pass(minimal_content_state):
     )
     state = minimal_content_state(draft)
 
-    result = run_compliance_agent(state)
+    result = _run_with_live_quota_guard(state)
 
     # Live LLM integrations can vary slightly in strictness across model updates.
     # Keep this test stable by validating structure and sensible outputs.
@@ -72,7 +85,7 @@ def test_multiple_violations_all_annotated(minimal_content_state):
     )
     state = minimal_content_state(draft)
 
-    result = run_compliance_agent(state)
+    result = _run_with_live_quota_guard(state)
 
     assert result["compliance_verdict"] in REVISE_VERDICTS | {"REJECT"}
     assert len(result["compliance_feedback"]) >= 2

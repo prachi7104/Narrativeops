@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import requests
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -18,12 +19,48 @@ REQUIRED_INTEGRATION_ENV_VARS = [
     "GOOGLE_API_KEY",
 ]
 
+_SMOKE_API_CHECKED = False
+_SMOKE_API_SKIP_REASON = ""
+
+
+def _verify_smoke_api() -> str:
+    """Return empty string when reachable; otherwise return skip reason."""
+    base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
+    health_url = f"{base_url.rstrip('/')}/health"
+
+    try:
+        response = requests.get(health_url, timeout=3)
+    except requests.RequestException as exc:
+        return f"Smoke tests require a reachable API at {health_url}: {exc}"
+
+    if response.status_code != 200:
+        return f"Smoke tests require healthy API at {health_url}, got status {response.status_code}"
+
+    return ""
+
 
 def pytest_collection_modifyitems(items):
     """Ensure integration tests always run env var checks first."""
     for item in items:
         if item.get_closest_marker("integration"):
             item.add_marker(pytest.mark.usefixtures("check_env_vars"))
+        if item.get_closest_marker("smoke"):
+            item.add_marker(pytest.mark.usefixtures("check_smoke_api"))
+
+
+def pytest_runtest_setup(item):
+    """Skip smoke tests unless the API endpoint is reachable."""
+    global _SMOKE_API_CHECKED, _SMOKE_API_SKIP_REASON
+
+    if not item.get_closest_marker("smoke"):
+        return
+
+    if not _SMOKE_API_CHECKED:
+        _SMOKE_API_SKIP_REASON = _verify_smoke_api()
+        _SMOKE_API_CHECKED = True
+
+    if _SMOKE_API_SKIP_REASON:
+        pytest.skip(_SMOKE_API_SKIP_REASON)
 
 
 def pytest_configure() -> None:
@@ -45,6 +82,23 @@ def check_env_vars():
     for env_var in REQUIRED_INTEGRATION_ENV_VARS:
         if not os.getenv(env_var):
             pytest.skip(f"Missing required env var for integration tests: set {env_var}")
+
+
+@pytest.fixture(scope="session")
+def check_smoke_api():
+    """Skip smoke tests when the target API is not reachable."""
+    base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
+    health_url = f"{base_url.rstrip('/')}/health"
+
+    try:
+        response = requests.get(health_url, timeout=3)
+    except requests.RequestException as exc:
+        pytest.skip(f"Smoke tests require a reachable API at {health_url}: {exc}")
+
+    if response.status_code != 200:
+        pytest.skip(
+            f"Smoke tests require healthy API at {health_url}, got status {response.status_code}"
+        )
 
 
 @pytest.fixture
