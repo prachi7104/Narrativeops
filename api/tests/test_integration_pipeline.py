@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-
 MOCK_STRATEGY = {
     "format": "multi_platform_pack",
     "tone": "authoritative",

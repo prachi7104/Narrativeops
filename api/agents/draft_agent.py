@@ -6,8 +6,7 @@ import json
 import logging
 import time
 
-from api.database import get_recent_corrections
-from api.database import query_brand_knowledge
+from api.database import get_recent_corrections, query_brand_knowledge
 from api.graph.state import ContentState
 from api.llm import call_llm
 from api.llm_router import log_routing_decision, route_model

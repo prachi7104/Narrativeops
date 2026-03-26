@@ -13,7 +13,7 @@ import argparse
 import json
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -241,7 +241,7 @@ def verify_scenario_outputs(base_url: str, run_id: str, expected: dict[str, Any]
 def _save_cache(results: list[dict[str, Any]], all_passed: bool, base_url: str) -> None:
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "cached_at": datetime.now(timezone.utc).isoformat(),
+        "cached_at": datetime.now(UTC).isoformat(),
         "base_url": base_url,
         "all_passed": all_passed,
         "scenarios": results,

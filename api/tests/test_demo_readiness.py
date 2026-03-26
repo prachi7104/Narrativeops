@@ -10,7 +10,6 @@ import os
 import pytest
 import requests
 
-
 BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 

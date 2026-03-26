@@ -27,8 +27,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from api import database  # noqa: E402
-from api.agents.rule_extractor_agent import extract_rules_from_pdf  # noqa: E402
-from api.agents.rule_extractor_agent import _extract_knowledge_triples  # noqa: E402
+from api.agents.rule_extractor_agent import (  # noqa: E402
+    _extract_knowledge_triples,
+    extract_rules_from_pdf,
+)
 from api.config import settings  # noqa: E402
 from api.graph.state import ContentState  # noqa: E402
 
@@ -356,11 +358,6 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
                 "message": str(exc),
             },
         )
-    finally:
-        # Cleanup is handled by stream disconnect and stale-state cleanup task.
-        return
-
-
 def _resume_pipeline_sync(run_id: str) -> None:
     """Resume graph from checkpoint — runs in a thread pool to avoid blocking the event loop."""
     from api.graph.pipeline import get_pipeline
