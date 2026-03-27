@@ -88,3 +88,38 @@ def test_agent_name_is_correct_in_audit_log():
     result = run_disclaimer_injector(make_state("##CONCLUSION\nConclusion text."))
 
     assert result["audit_log"][-1]["agent"] == "disclaimer_injector"
+
+
+def test_partial_disclaimer_gets_replaced_with_canonical():
+    """A draft with only part of the disclaimer should have the partial removed and full canonical injected."""
+    draft = (
+        "##INTRO\nIntro.\n\n##BODY\nBody.\n\n##CONCLUSION\n"
+        "Investments are subject to market risk, and users should carefully evaluate their options."
+    )
+
+    result = run_disclaimer_injector(make_state(draft))
+
+    full_canonical = (
+        "Investments are subject to market risk. "
+        "Please read all scheme-related documents carefully before investing."
+    )
+    assert full_canonical in result["draft"]
+    # Action must be 'injected' (not 'skipped') since the canonical form wasn't present
+    assert result["audit_log"][-1]["action"] == "injected"
+    # Must appear exactly once — no duplicates
+    assert result["draft"].lower().count("investments are subject to market risk") == 1
+
+
+def test_exact_canonical_skips_injection():
+    """If EXACT canonical disclaimer is present, action must be 'skipped'."""
+    draft = (
+        "##CONCLUSION\n"
+        "Investments are subject to market risk. "
+        "Please read all scheme-related documents carefully before investing."
+    )
+
+    result = run_disclaimer_injector(make_state(draft))
+
+    assert result["audit_log"][-1]["action"] == "skipped"
+    # Still only one occurrence
+    assert result["draft"].lower().count("investments are subject to market risk") == 1

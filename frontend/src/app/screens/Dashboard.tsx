@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText,
@@ -168,6 +168,7 @@ function statusBadge(status: string) {
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   /* --- data -------------------------------------------------------- */
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -210,6 +211,28 @@ export function Dashboard() {
   const [pdfRulesExtracted, setPdfRulesExtracted] = useState<number | null>(null);
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Read prefill brief from location.state (set by PipelineRunning 'Try again')
+  useEffect(() => {
+    const prefill = (location.state as { prefillBrief?: Record<string, unknown> } | null)?.prefillBrief;
+    if (!prefill) return;
+    const t = String(prefill.topic || '').trim();
+    const d = String(prefill.description || '').trim();
+    const to = String(prefill.tone || '').trim() as Tone;
+    if (t) setTopic(t);
+    if (d) setDescription(d);
+    if (TONE_OPTIONS.includes(to)) setTone(to);
+    // Auto-open the drawer using the first tile as default
+    if (t) {
+      setSelectedOutputOptions(TEMPLATE_TILES[0].outputOptions);
+      setSelectedCategory(TEMPLATE_TILES[0].category);
+      setPdfRulesExtracted(null);
+      setPdfUploadError(null);
+      setDrawerOpen(true);
+    }
+  // Only run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openDrawer = useCallback((tile: TemplateTile) => {
     setSelectedOutputOptions(tile.outputOptions);
@@ -258,7 +281,7 @@ export function Dashboard() {
       );
 
       closeDrawer();
-      navigate(`/pipeline/${result.run_id}`, { state: { category: contentDomain } });
+      navigate(`/pipeline/${result.run_id}`, { state: { category: contentDomain, brief } });
     } catch (err) {
       console.error(err);
     } finally {

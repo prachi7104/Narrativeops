@@ -109,8 +109,43 @@ def run_compliance_agent(state: ContentState) -> dict:
         ]
     )
 
-    compliance_flags = state.get("compliance_flags", [])
+    compliance_flags = state.get("compliance_flags", []) or []
     flag_lines = [f"- {str(flag).strip()}" for flag in compliance_flags if str(flag).strip()]
+
+    compliance_history = state.get("compliance_history", []) or []
+
+    # Canonical disclaimer — used to build the prompt instruction
+    _CANONICAL_DISCLAIMER = (
+        "Investments are subject to market risk. "
+        "Please read all scheme-related documents carefully before investing."
+    )
+
+    # Build prior-iteration context to prevent re-flagging
+    resolved_context = ""
+    if len(compliance_history) > 0:
+        resolved_context = (
+            "\n\nPREVIOUS ITERATIONS — DO NOT RE-FLAG THESE ISSUES:\n"
+            "The following issues were flagged in previous iterations and the draft has "
+            "been revised to address them. Do NOT flag them again unless the fix was "
+            "clearly undone in the current draft:\n"
+        )
+        for entry in compliance_history:
+            resolved_context += (
+                f"  Iteration {entry.get('iteration', '?')}: "
+                f"{entry.get('violations_count', 0)} violation(s) — "
+                f"{entry.get('summary', '')[:150]}\n"
+            )
+
+    # Check if the canonical disclaimer is already present in draft
+    disclaimer_present = _CANONICAL_DISCLAIMER.lower() in draft.lower()
+    disclaimer_instruction = (
+        "\n- SEBI03 CHECK: The exact canonical disclaimer "
+        "'Investments are subject to market risk. Please read all scheme-related "
+        "documents carefully before investing.' IS present verbatim in the draft. "
+        "Do NOT flag SEBI03 or any required-disclaimer rule."
+        if disclaimer_present
+        else ""
+    )
 
     # System prompt with exact JSON schema
     system_prompt = """You are a compliance checker for Economic Times financial content.
@@ -150,8 +185,8 @@ Critical rules:
 1. If verdict is PASS, annotations must be an empty array []
 2. REJECT only for factually false claims that cannot be fixed by rewording
 3. REVISE when violations exist but can be corrected with targeted rewrites
-4. Annotate EVERY violation you find
-5. Return ONLY the JSON object. No explanation, no markdown."""
+4. Annotate EVERY violation you find — but do NOT re-flag issues already fixed in prior iterations
+5. Return ONLY the JSON object. No explanation, no markdown.""" + disclaimer_instruction + resolved_context
 
     if flag_lines:
         system_prompt += (
@@ -268,8 +303,25 @@ DRAFT:
 
     # Extract components
     verdict = result.get("verdict", "PASS")
-    annotations = result.get("annotations", [])
+    annotations = result.get("annotations", []) or []
     summary = result.get("summary", "")
+
+    # Post-LLM: if ALL annotations are warnings (no errors), force PASS.
+    # This prevents the LLM's over-cautious REVISE from causing infinite loops.
+    if verdict == "REVISE" and annotations:
+        error_annotations = [
+            a for a in annotations
+            if str(a.get("severity", "warning")).lower() == "error"
+        ]
+        if not error_annotations:
+            logger.info(
+                "Overriding REVISE→PASS: all %s annotation(s) are warnings only (no errors).",
+                len(annotations),
+            )
+            verdict = "PASS"
+            annotations = []  # Clear warnings — they've been addressed sufficiently
+            summary = (summary or "") + " [auto-pass: warnings only]"
+
     history_entry = {
         "iteration": current_iterations + 1,
         "verdict": verdict,

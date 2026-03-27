@@ -23,26 +23,41 @@ def route_after_compliance(state: ContentState) -> str:
     Route after compliance check based on verdict and iteration count.
 
     Returns:
-        - "localization_agent" if compliant
-        - "human_escalation" if rejected or max iterations reached
-        - "draft_agent" if revision needed and iterations < 3
+        - "localization_agent" if compliant (PASS) or soft-pass (warnings-only after iter 3)
+        - "human_escalation" if rejected or max iterations (5) reached
+        - "draft_agent" if revision needed and iterations < 5
     """
     verdict = state["compliance_verdict"]
     iterations = state["compliance_iterations"]
+    feedback = state.get("compliance_feedback", []) or []
 
-    # PASS always wins, even when iteration counter reached max.
+    # PASS always wins.
     if verdict == "PASS":
         return "localization_agent"
 
-    # Hard reject escalates directly.
+    # Hard reject escalates directly — cannot be fixed by rewording.
     if verdict == "REJECT":
         return "human_escalation"
 
-    # REVISE with exhausted attempts escalates.
-    if iterations >= 3:
+    # SOFT-PASS: after 3 iterations, if only warnings remain (no errors), let through.
+    # This prevents infinite loops when only minor style warnings are left.
+    if iterations >= 3 and verdict == "REVISE":
+        only_warnings = all(
+            str(item.get("severity", "warning")).lower() == "warning"
+            for item in feedback
+        )
+        if only_warnings or not feedback:
+            logger.info(
+                "Soft-pass after %s iterations — only warnings remain. Routing to localization.",
+                iterations,
+            )
+            return "localization_agent"
+
+    # REVISE with exhausted attempts (hard limit = 5) escalates.
+    if iterations >= 5:
         return "human_escalation"
 
-    # Otherwise: REVISE and iterations < 3
+    # Otherwise: REVISE and iterations < 5
     return "draft_agent"
 
 

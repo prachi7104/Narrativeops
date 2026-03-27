@@ -176,6 +176,9 @@ export function ApprovalGate() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [swipeLocked, setSwipeLocked] = useState(false);
+  const [isEscalated, setIsEscalated] = useState(false);
+  const [escalationReason, setEscalationReason] = useState<string>('');
+  const [runBriefJson, setRunBriefJson] = useState<Record<string, unknown> | null>(null);
   const swipeX = useMotionValue(0);
   const swipeControls = useAnimation();
   const approveOverlayOpacity = useTransform(swipeX, [20, 180], [0, 1]);
@@ -228,6 +231,25 @@ export function ApprovalGate() {
       const fetchedCategory = String(briefJson.content_category || '').trim();
       if (fetchedCategory) {
         setContentCategory(fetchedCategory);
+      }
+      setRunBriefJson(briefJson);
+
+      // Detect escalation: status is 'escalated' and there are no output rows
+      const runStatus = String(statusResponse?.status || '').toLowerCase();
+      if (runStatus === 'escalated') {
+        setIsEscalated(true);
+        // Try to extract an escalation reason from audit events
+        const escalationEvent = auditEvents.find(
+          (e) => e.agent_name === 'human_escalation' || String(e.output_summary || '').toLowerCase().includes('escalat'),
+        );
+        if (escalationEvent) {
+          setEscalationReason(
+            escalationEvent.output_summary ||
+            `Compliance review exceeded maximum iterations. Content requires manual review.`,
+          );
+        } else {
+          setEscalationReason('Content was escalated after exhausting automated compliance attempts.');
+        }
       }
 
       if (formatMeta.options.includes('et_op_ed')) {
@@ -644,7 +666,44 @@ export function ApprovalGate() {
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 flex flex-col lg:flex-row gap-8">
         {/* Content Area */}
         <div className="flex-1">
-          {!hasAnyGeneratedOutput && (
+          {/* Escalation Banner — shown when the run was escalated with no outputs */}
+        {isEscalated && !hasAnyGeneratedOutput && (
+          <div className="mb-6 rounded-xl border border-orange-500/40 bg-orange-500/10 p-5">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-orange-500/20 flex items-center justify-center">
+                <span className="text-orange-500 text-xs font-bold">!</span>
+              </div>
+              <div>
+                <p className="font-semibold text-orange-400 text-sm">Content Escalated for Manual Review</p>
+                <p className="text-xs text-text-secondary mt-1">
+                  The automated compliance pipeline could not resolve all violations after multiple attempts.
+                  No content was published. You can re-run with a simplified approach or review the compliance details below.
+                </p>
+              </div>
+            </div>
+            {escalationReason && (
+              <div className="rounded-md bg-bg-elevated px-3 py-2 text-xs text-text-secondary mb-4 font-mono">
+                {escalationReason}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => navigate('/', { state: { prefillBrief: runBriefJson } })}
+                className="px-4 py-2 bg-accent-primary text-white rounded-md text-sm hover:bg-accent-primary/90 transition-colors"
+              >
+                Re-run with relaxed compliance
+              </button>
+              <button
+                onClick={() => navigate('/')}
+                className="px-4 py-2 border border-border-default text-text-secondary rounded-md text-sm hover:text-text-primary transition-colors"
+              >
+                Back to dashboard
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!hasAnyGeneratedOutput && !isEscalated && (
             <div className="mb-4 rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
               <p className="font-medium">No generated outputs found for this run yet.</p>
               <p className="mt-1 text-xs text-text-secondary">

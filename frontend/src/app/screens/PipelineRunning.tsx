@@ -4,7 +4,7 @@ import { Brain, FileText, Languages, PenLine, ShieldCheck, StopCircle, TrendingU
 import { motion } from 'motion/react';
 
 import { usePipelineSSE, AGENT_ID_MAP } from '../../hooks/usePipelineSSE';
-import { cancelPipeline } from '../../api/client';
+import { cancelPipeline, getPipelineStatus } from '../../api/client';
 
 type AgentStatus = 'pending' | 'running' | 'done' | 'warning' | 'error' | 'skipped';
 
@@ -53,11 +53,16 @@ export function PipelineRunning() {
   const navigate = useNavigate();
   const location = useLocation();
   const contentCategory = (location.state as { category?: string } | null)?.category || 'general';
+  // Brief passed from Dashboard — used to pre-fill the form if the user retries
+  const passedBrief = (location.state as { brief?: Record<string, unknown> } | null)?.brief || null;
+
   const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [complianceBounced, setComplianceBounced] = useState(false);
+  // Brief fetched from status — populated once error occurs so Try Again can prefill
+  const [runBrief, setRunBrief] = useState<Record<string, unknown> | null>(passedBrief);
   const logEndRef = useRef<HTMLDivElement>(null);
   const logIdCounter = useRef(1);
 
@@ -115,7 +120,7 @@ export function PipelineRunning() {
           ...agent,
           status: newStatus,
           ...(agentName === 'compliance_agent' && newStatus === 'warning'
-            ? { attempt: `Attempt ${iter}/3` }
+            ? { attempt: `Attempt ${iter}/5` }
             : { attempt: undefined }),
         };
       }
@@ -138,7 +143,7 @@ export function PipelineRunning() {
         : [];
 
       if (verdict === 'REVISE') {
-        logMessage = `REVISE — ${feedback.length} violation(s) found (attempt ${iter}/3). Sending back to draft agent.`;
+        logMessage = `REVISE — ${feedback.length} violation(s) found (attempt ${iter}/5). Sending back to draft agent.`;
         logLevel = 'warning';
       } else if (verdict === 'PASS') {
         logMessage = `PASS — All compliance rules satisfied (attempt ${iter})`;
@@ -157,8 +162,19 @@ export function PipelineRunning() {
     }]);
   }, []);
 
-  const onHumanRequired = useCallback((id: string) => {
-    navigate('/approval/' + id, { state: { category: contentCategory } });
+  const onHumanRequired = useCallback(async (id: string) => {
+    try {
+      const statusResponse = await getPipelineStatus(id);
+      const status = String(statusResponse.status || "").toLowerCase();
+      if (status === "escalated") {
+        navigate('/audit/' + id, { state: { category: contentCategory } });
+      } else {
+        navigate('/approval/' + id, { state: { category: contentCategory } });
+      }
+    } catch {
+      // Fallback to approval if status fetch fails
+      navigate('/approval/' + id, { state: { category: contentCategory } });
+    }
   }, [navigate, contentCategory]);
 
   const onError = useCallback((message: string) => {
@@ -180,7 +196,16 @@ export function PipelineRunning() {
       message: 'Pipeline error: ' + message,
       level: isEscalation ? 'warning' : 'error',
     }]);
-  }, []);
+    // Fetch the run's brief so the 'Try again' button can prefill the form
+    if (runId) {
+      getPipelineStatus(runId)
+        .then((status) => {
+          const brief = status?.brief_json as Record<string, unknown> | null;
+          if (brief) setRunBrief(brief);
+        })
+        .catch(() => { /* non-critical */ });
+    }
+  }, [runId]);
 
   const onComplete = useCallback((id: string) => {
     navigate(`/audit/${id}`);
@@ -412,7 +437,7 @@ export function PipelineRunning() {
             <div className="max-w-2xl mx-auto mt-6 p-4 bg-red-900/20 border border-red-700 rounded-md">
               <p className="text-red-400 text-sm mb-3">{pipelineError}</p>
               <button
-                onClick={() => navigate('/configure')}
+                onClick={() => navigate('/', { state: { prefillBrief: runBrief } })}
                 className="px-4 py-2 bg-accent-primary text-white rounded-md text-sm"
               >
                 Try again

@@ -140,6 +140,11 @@ def run_draft_agent(state: ContentState) -> dict:
 
     if is_revision:
         # REVISION MODE: Fix specific flagged sentences
+        _CANONICAL_DISCLAIMER = (
+            "Investments are subject to market risk. "
+            "Please read all scheme-related documents carefully before investing."
+        )
+
         system_prompt = f"""You are an editor for Economic Times.
 Revise the draft article below by fixing ONLY the specific flagged sentences.
 
@@ -151,6 +156,10 @@ CRITICAL: The output MUST contain these exact section markers:
 ##INTRO
 ##BODY
 ##CONCLUSION
+
+MANDATORY DISCLAIMER: You MUST preserve this exact text verbatim somewhere in ##CONCLUSION:
+"{_CANONICAL_DISCLAIMER}"
+Do NOT paraphrase, shorten, or modify this disclaimer in any way.
 
 Return ONLY the complete revised draft. No explanation."""
 
@@ -176,6 +185,26 @@ Return ONLY the complete revised draft. No explanation."""
                 )
             history_lines.append("Do NOT repeat the same mistakes. These approaches failed.")
             user_prompt = "\n".join(history_lines) + "\n\n" + user_prompt
+
+        # Explicitly list all previously-resolved issues so the LLM doesn't undo them
+        if compliance_history:
+            resolved_lines = [
+                "\nALREADY RESOLVED — DO NOT UNDO THESE FIXES:",
+                "The following issues were addressed in prior revision rounds.",
+                "Keep those fixes intact in your revision:",
+            ]
+            for entry in compliance_history:
+                resolved_lines.append(
+                    f"  Iteration {entry.get('iteration', '?')}: "
+                    f"{entry.get('violations_count', 0)} violation(s) fixed — "
+                    f"{entry.get('summary', '')[:120]}"
+                )
+            resolved_lines.append(
+                "  DISCLAIMER: The exact canonical disclaimer is already injected. "
+                "Preserve it word-for-word."
+            )
+            user_prompt += "\n".join(resolved_lines) + "\n"
+
 
         if strategy_recommendation:
             user_prompt += f"\n\nStrategy recommendation: {strategy_recommendation}"
