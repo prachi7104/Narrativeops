@@ -65,7 +65,8 @@ class TestComplianceRouting:
 
         state = {
             "compliance_verdict": "REVISE",
-            "compliance_iterations": 3,
+            "compliance_iterations": 5,
+            "compliance_feedback": [{"severity": "error", "message": "persistent issue"}],
         }
         assert route_after_compliance(state) == "human_escalation"
 
