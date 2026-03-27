@@ -103,8 +103,7 @@ def seed_default_rules(force: bool = False) -> None:
     try:
         client = get_supabase_client()
         if client is None:
-            logger.error("Could not seed default rules because Supabase client is unavailable")
-            print("Could not seed default rules")
+            logger.warning("Skipping default rule seeding because Supabase client is unavailable")
             return
 
         if force:
@@ -119,13 +118,11 @@ def seed_default_rules(force: bool = False) -> None:
             )
             existing = response.data or []
             if existing:
-                print("Default rules already seeded")
+                logger.info("Default rules already seeded")
                 return
 
         all_rules = _default_rules_payload()
         save_org_rules("default", all_rules)
         logger.info("Seeded %s default fallback rules", len(all_rules))
-        print(f"Seeded {len(all_rules)} default rules")
     except Exception as exc:
-        logger.exception("Failed to seed default fallback rules: %s", exc)
-        print("Could not seed default rules")
+        logger.warning("Default rule seeding skipped due to non-fatal error: %s", exc)

@@ -33,7 +33,6 @@ class TestFormatAgentRecovery:
         with patch("api.agents.format_agent.call_llm", return_value="TRUNCATED_JSON_NO_CLOSING_BRACE"):
             with (
                 patch("api.agents.format_agent.write_pipeline_outputs"),
-                patch("api.agents.format_agent.write_audit_log"),
                 patch("api.agents.format_agent.save_pipeline_metrics"),
                 patch("api.agents.format_agent.update_run_status"),
             ):

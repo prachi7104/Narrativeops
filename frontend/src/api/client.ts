@@ -6,6 +6,7 @@ import type {
   DashboardSummary,
   DiffResponse,
   EngagementStrategyResponse,
+  PipelineStatusResponse,
   PipelineMetrics,
   PipelineOutput,
   PipelineRun,
@@ -108,6 +109,13 @@ export async function getOutputs(runId: string): Promise<PipelineOutput[]> {
   await assertOk(response, endpoint);
   const data = (await response.json()) as { outputs: PipelineOutput[] };
   return data.outputs;
+}
+
+export async function getPipelineStatus(runId: string): Promise<PipelineStatusResponse> {
+  const endpoint = `${BASE_URL}/api/pipeline/${runId}/status`;
+  const response = await fetch(endpoint);
+  await assertOk(response, endpoint);
+  return (await response.json()) as PipelineStatusResponse;
 }
 
 export async function captureDiff(

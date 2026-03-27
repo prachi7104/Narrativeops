@@ -9,6 +9,7 @@ export type {
 	SettingsRulesResponse,
 	PipelineMetrics,
 	PipelineOutput,
+	PipelineStatusResponse,
 	PipelineRun,
 	StyleMemoryResponse,
 } from "../../api/types";

@@ -5,7 +5,6 @@ Compliance agent: Checks draft against compliance rules.
 import json
 import logging
 import time
-from pathlib import Path
 
 from api.config import settings
 from api.database import get_org_rules, query_brand_knowledge
@@ -16,22 +15,40 @@ from api.llm_router import log_routing_decision, route_model
 logger = logging.getLogger(__name__)
 
 
-def _load_json_rules() -> list[dict]:
-    """Load enabled compliance rules from local JSON fallback."""
-    rules_path = Path(__file__).parent.parent / "data" / "compliance_rules.json"
-    with open(rules_path) as f:
-        all_rules = json.load(f)
-
-    enabled_rules = [r for r in all_rules if r.get("enabled", False)]
+def _emergency_fallback_rules() -> list[dict]:
+    """Hard-coded fallback used when Supabase rules are unavailable."""
     return [
         {
-            "rule_id": r.get("id", ""),
-            "category": r.get("category", ""),
-            "rule_text": r.get("rule_text", ""),
-            "severity": r.get("severity", "warning"),
-            "source": "json_file",
-        }
-        for r in enabled_rules
+            "rule_id": "SEBI01",
+            "category": "banned_phrase",
+            "rule_text": "Do not use 'guaranteed returns', 'guaranteed profit', or 'assured returns'.",
+            "severity": "error",
+            "source": "emergency_fallback",
+        },
+        {
+            "rule_id": "SEBI02",
+            "category": "banned_phrase",
+            "rule_text": "Do not use 'risk-free investment', 'zero-risk', or 'no-risk'.",
+            "severity": "error",
+            "source": "emergency_fallback",
+        },
+        {
+            "rule_id": "SEBI03",
+            "category": "required_disclaimer",
+            "rule_text": (
+                "Investment content must include: 'Investments are subject to market risk. "
+                "Please read all scheme-related documents carefully before investing.'"
+            ),
+            "severity": "error",
+            "source": "emergency_fallback",
+        },
+        {
+            "rule_id": "ASCI01",
+            "category": "factual_claim",
+            "rule_text": "Content must not be misleading through omission of material risk facts.",
+            "severity": "error",
+            "source": "emergency_fallback",
+        },
     ]
 
 
@@ -46,41 +63,33 @@ def run_compliance_agent(state: ContentState) -> dict:
     current_iterations = state.get("compliance_iterations", 0)
     session_id = str(state.get("session_id", "") or "").strip()
 
-    # Load rules dynamically from Supabase by session when available.
-    rules_source = "json_file"
-    combined_rules: list[dict]
-    if session_id:
-        try:
-            if settings.SUPABASE_URL and settings.SUPABASE_ANON_KEY:
-                rules = get_org_rules(session_id)
-            else:
-                rules = []
+    # Load rules from Supabase with a hard-coded emergency fallback.
+    rules_source = "default"
+    combined_rules: list[dict] = []
+    try:
+        if settings.SUPABASE_URL and settings.SUPABASE_ANON_KEY:
+            default_rules = get_org_rules("default")
+            session_rules = get_org_rules(session_id) if session_id else []
 
-            if len(rules) > 0:
-                rules_source = "org_rules"
-                default_rules = get_org_rules("default")
-                org_rule_ids = {str(r.get("rule_id", "")) for r in rules}
-                combined_rules = rules + [
-                    r for r in default_rules if str(r.get("rule_id", "")) not in org_rule_ids
+            if session_rules:
+                session_rule_ids = {str(r.get("rule_id", "")) for r in session_rules}
+                combined_rules = session_rules + [
+                    r for r in default_rules if str(r.get("rule_id", "")) not in session_rule_ids
                 ]
+                rules_source = "org_rules"
             else:
-                combined_rules = get_org_rules("default")
+                combined_rules = default_rules
                 rules_source = "default"
-        except Exception as exc:
-            logger.warning(
-                "Failed to fetch Supabase rules for session_id=%s; falling back to JSON rules: %s",
-                session_id,
-                exc,
-            )
-            combined_rules = _load_json_rules()
-            rules_source = "json_file"
-    else:
-        combined_rules = _load_json_rules()
-        rules_source = "json_file"
+    except Exception as exc:
+        logger.warning(
+            "Failed to fetch Supabase rules for session_id=%s. Using emergency fallback: %s",
+            session_id,
+            exc,
+        )
 
     if not combined_rules:
-        combined_rules = _load_json_rules()
-        rules_source = "json_file"
+        combined_rules = _emergency_fallback_rules()
+        rules_source = "emergency_fallback"
 
     brand_knowledge: list[dict] = []
     if session_id:

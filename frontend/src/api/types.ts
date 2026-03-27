@@ -140,6 +140,13 @@ export interface RunSummary {
   has_hindi?: boolean;
 }
 
+export interface PipelineStatusResponse {
+  run_id: string;
+  status: "running" | "awaiting_approval" | "completed" | "failed" | "escalated" | "rejected" | "cancelled" | "unknown";
+  pipeline_status: string;
+  brief_json?: Record<string, unknown>;
+}
+
 export interface SettingsRule {
   rule_id: string;
   rule_text: string;

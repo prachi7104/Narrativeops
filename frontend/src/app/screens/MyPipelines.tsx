@@ -15,7 +15,7 @@ import { motion } from 'motion/react';
 import { listRuns } from '../api/client';
 import type { RunSummary } from '../api/types';
 
-type StatusFilter = 'all' | 'running' | 'completed' | 'failed';
+type StatusFilter = 'all' | 'running' | 'awaiting_approval' | 'completed' | 'failed';
 
 function formatDate(iso: string): string {
   try {
@@ -117,7 +117,7 @@ export function MyPipelines() {
   const fetchRuns = () => {
     setLoading(true);
     setError(null);
-    listRuns(50)
+    listRuns(50, statusFilter)
       .then((data: RunSummary[]) => {
         setRuns(data);
       })
@@ -131,7 +131,7 @@ export function MyPipelines() {
 
   useEffect(() => {
     fetchRuns();
-  }, []);
+  }, [statusFilter]);
 
   const filtered = runs.filter((run) => {
     const matchesSearch = (run.brief_topic || '')
@@ -145,6 +145,7 @@ export function MyPipelines() {
   const filterButtons: { key: StatusFilter; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'running', label: 'Running' },
+    { key: 'awaiting_approval', label: 'Awaiting Review' },
     { key: 'completed', label: 'Completed' },
     { key: 'failed', label: 'Failed' },
   ];

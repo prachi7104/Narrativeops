@@ -8,6 +8,7 @@ import DOMPurify from 'dompurify';
 import {
   getOutputs,
   getMetrics,
+  getPipelineStatus,
   captureDiff,
   approvePipeline,
   rejectPipeline,
@@ -157,7 +158,9 @@ export function ApprovalGate() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const contentCategory = (location.state as any)?.category || 'general';
+  const [contentCategory, setContentCategory] = useState<string>(
+    String((location.state as { category?: string } | null)?.category || 'general'),
+  );
   const [activeTab, setActiveTab] = useState<Channel>('blog');
   const [editMode, setEditMode] = useState(false);
   const [content, setContent] = useState<ChannelContent>({});
@@ -204,11 +207,12 @@ export function ApprovalGate() {
     }
 
     try {
-      const [outputs, loadedMetrics, auditEvents, strategy] = await Promise.all([
+      const [outputs, loadedMetrics, auditEvents, strategy, statusResponse] = await Promise.all([
         getOutputs(id),
         getMetrics(id),
         getAuditTrail(id),
         getPipelineStrategy(id).catch(() => null),
+        getPipelineStatus(id).catch(() => null),
       ]);
       const mapped = mapOutputsToContent(outputs);
       setContent(mapped);
@@ -219,6 +223,12 @@ export function ApprovalGate() {
       setEngagementStrategy(strategy);
       const formatMeta = parseFormatMetadata(auditEvents);
       setOutputOptions(formatMeta.options);
+
+      const briefJson = (statusResponse?.brief_json || {}) as Record<string, unknown>;
+      const fetchedCategory = String(briefJson.content_category || '').trim();
+      if (fetchedCategory) {
+        setContentCategory(fetchedCategory);
+      }
 
       if (formatMeta.options.includes('et_op_ed')) {
         setActiveTab('op_ed');

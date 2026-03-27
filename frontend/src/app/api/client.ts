@@ -9,6 +9,7 @@ export {
   getHealth,
   getMetrics,
   getOutputs,
+  getPipelineStatus,
   getPipelineStrategy,
   getSettingsRules,
   getStyleMemory,

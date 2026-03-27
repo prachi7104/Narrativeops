@@ -64,7 +64,7 @@ class TestComplianceFlagsFlow:
                 mock_settings.SUPABASE_URL = ""
                 mock_settings.SUPABASE_ANON_KEY = ""
                 with patch(
-                    "api.agents.compliance_agent._load_json_rules",
+                    "api.agents.compliance_agent._emergency_fallback_rules",
                     return_value=[
                         {
                             "rule_id": "R01",
@@ -111,7 +111,7 @@ class TestReflexionMemory:
             with patch("api.agents.compliance_agent.settings") as mock_settings:
                 mock_settings.SUPABASE_URL = ""
                 mock_settings.SUPABASE_ANON_KEY = ""
-                with patch("api.agents.compliance_agent._load_json_rules", return_value=[]):
+                with patch("api.agents.compliance_agent._emergency_fallback_rules", return_value=[]):
                     result = run_compliance_agent(state)
 
         assert len(result["compliance_history"]) == 2

@@ -10,9 +10,9 @@ import time
 from typing import Any
 
 from api.database import (
+    get_supabase_client,
     save_pipeline_metrics,
     update_run_status,
-    write_audit_log,
     write_pipeline_outputs,
 )
 from api.graph.state import ContentState
@@ -415,11 +415,6 @@ def run_format_agent(state: ContentState) -> dict:
         logger.exception("Failed to write pipeline outputs to Supabase: %s", exc)
 
     try:
-        write_audit_log(run_id=run_id, audit_log=full_audit_log)
-    except Exception as exc:
-        logger.exception("Failed to write audit log to Supabase: %s", exc)
-
-    try:
         total_duration_ms = sum(
             int(entry.get("duration_ms") or 0) for entry in full_audit_log
         )
@@ -454,7 +449,6 @@ def run_format_agent(state: ContentState) -> dict:
             "total_duration_ms": total_duration_ms,
             "actual_duration_ms": total_duration_ms,
             "baseline_manual_hours": baseline_manual_hours,
-            "baseline_content_category": category,
             "agent_count": agent_count,
             "compliance_iterations": state.get("compliance_iterations", 0),
             "corrections_applied": corrections_applied,
@@ -467,6 +461,22 @@ def run_format_agent(state: ContentState) -> dict:
             "cost_efficiency_ratio": round(cost_efficiency_ratio, 1),
         }
         save_pipeline_metrics(state["run_id"], metrics_dict)
+
+        try:
+            client = get_supabase_client()
+            if client is not None:
+                (
+                    client.table("pipeline_runs")
+                    .update({"compliance_iterations": int(state.get("compliance_iterations") or 0)})
+                    .eq("id", run_id)
+                    .execute()
+                )
+        except Exception as sync_exc:
+            logger.warning(
+                "Failed to sync compliance_iterations to pipeline_runs for run_id=%s: %s",
+                run_id,
+                sync_exc,
+            )
 
         audit_entry["metrics_saved"] = True
         audit_entry["estimated_hours_saved"] = round(estimated_hours_saved, 2)

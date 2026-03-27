@@ -73,7 +73,10 @@ async def lifespan(app: FastAPI):
     """Application startup/shutdown lifecycle."""
     from api.data.seed_default_rules import seed_default_rules
 
-    seed_default_rules()
+    try:
+        seed_default_rules()
+    except Exception as exc:
+        logger.warning("Default rule seeding skipped at startup (non-fatal): %s", exc)
     global APP_EVENT_LOOP
     APP_EVENT_LOOP = asyncio.get_running_loop()
     cleanup_task = asyncio.create_task(_cleanup_stale_queues())
@@ -201,6 +204,15 @@ def _extract_pipeline_status(payload: object) -> str | None:
     return None
 
 
+def _status_from_database(run_id: str) -> str | None:
+    """Fetch the latest persisted run status for terminal state reconciliation."""
+    run_record = database.get_run(run_id)
+    if not run_record:
+        return None
+    status = str(run_record.get("status") or "").strip().lower()
+    return status or None
+
+
 def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None) -> None:
     try:
         # Lazy import to avoid circular dependencies at module import time.
@@ -303,7 +315,11 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
         final_values = getattr(checkpoint_state, "values", {}) or {}
         final_audit_log = final_values.get("audit_log", [])
 
-        if cancelled_by_user:
+        persisted_status = _status_from_database(run_id)
+        if persisted_status in {"awaiting_approval", "escalated", "failed", "cancelled", "completed"}:
+            latest_pipeline_status = persisted_status
+
+        if cancelled_by_user or latest_pipeline_status == "cancelled":
             database.update_run_status(run_id, "cancelled")
             _emit_sse(
                 run_id,
@@ -334,6 +350,18 @@ def _run_pipeline_thread(run_id: str, brief: dict, engagement_data: dict | None)
                     "type": "error",
                     "run_id": run_id,
                     "message": "Pipeline escalated for manual review before formatting outputs.",
+                },
+            )
+        elif latest_pipeline_status == "failed":
+            database.update_run_status(run_id, "failed")
+            if isinstance(final_audit_log, list) and final_audit_log:
+                database.write_audit_log(run_id, final_audit_log)
+            _emit_sse(
+                run_id,
+                {
+                    "type": "error",
+                    "run_id": run_id,
+                    "message": "Pipeline failed before completion.",
                 },
             )
         else:
@@ -527,6 +555,7 @@ async def get_pipeline_status(run_id: str) -> dict:
         "run_id": run_id,
         "status": status,
         "pipeline_status": status,
+        "brief_json": run.get("brief_json") or {},
     }
 
 
@@ -539,6 +568,7 @@ async def get_pipeline_outputs(run_id: str) -> dict:
 async def approve_pipeline(run_id: str, request: ApproveRequest) -> dict:
     if request.approved:
         database.approve_run(run_id)
+        SSE_QUEUES[run_id] = asyncio.Queue()
 
         # A2: Run blocking pipeline resume in a thread-pool executor
         loop = asyncio.get_event_loop()

@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { getPipelineStatus } from "../api/client";
 
 export const AGENT_ID_MAP: Record<string, string> = {
   intake_agent: "1",
@@ -11,6 +12,9 @@ export const AGENT_ID_MAP: Record<string, string> = {
 };
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const MAX_RECONNECT_ATTEMPTS = 3;
+const RECONNECT_DELAYS_MS = [1000, 2000, 4000];
+const STATUS_POLL_INTERVAL_MS = 2500;
 
 type AgentEventPayload = {
   pipeline_status: string;
@@ -34,64 +38,171 @@ export function usePipelineSSE(
   onError: (message: string) => void,
   onComplete?: (runId: string) => void,
 ): void {
+  const onAgentUpdateRef = useRef(onAgentUpdate);
+  const onHumanRequiredRef = useRef(onHumanRequired);
+  const onErrorRef = useRef(onError);
+  const onCompleteRef = useRef(onComplete);
+
+  onAgentUpdateRef.current = onAgentUpdate;
+  onHumanRequiredRef.current = onHumanRequired;
+  onErrorRef.current = onError;
+  onCompleteRef.current = onComplete;
+
   useEffect(() => {
     if (!runId) {
       return;
     }
 
-    const eventSource = new EventSource(`${BASE_URL}/api/pipeline/${runId}/stream`);
+    let eventSource: EventSource | null = null;
+    let isDisposed = false;
+    let reconnectAttempts = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let statusPollTimer: ReturnType<typeof setInterval> | null = null;
 
-    eventSource.onmessage = (rawEvent: MessageEvent<string>) => {
-      let event: PipelineSSEEvent;
+    const stopStatusPolling = () => {
+      if (statusPollTimer) {
+        clearInterval(statusPollTimer);
+        statusPollTimer = null;
+      }
+    };
+
+    const stopStream = () => {
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+    };
+
+    const handleTerminalFromStatus = async () => {
       try {
-        event = JSON.parse(rawEvent.data) as PipelineSSEEvent;
+        const status = await getPipelineStatus(runId);
+        const normalized = String(status.status || "").toLowerCase();
+
+        if (normalized === "awaiting_approval") {
+          stopStatusPolling();
+          onHumanRequiredRef.current(runId);
+          return;
+        }
+
+        if (normalized === "completed") {
+          stopStatusPolling();
+          if (onCompleteRef.current) {
+            onCompleteRef.current(runId);
+          }
+          return;
+        }
+
+        if (normalized === "failed" || normalized === "escalated" || normalized === "rejected" || normalized === "cancelled") {
+          stopStatusPolling();
+          onErrorRef.current(`Pipeline ${normalized}`);
+        }
       } catch {
-        onError("Failed to parse pipeline stream event");
-        eventSource.close();
+        // Keep polling until we can fetch terminal status.
+      }
+    };
+
+    const startStatusPolling = () => {
+      if (statusPollTimer) {
+        return;
+      }
+      statusPollTimer = setInterval(() => {
+        if (!isDisposed) {
+          void handleTerminalFromStatus();
+        }
+      }, STATUS_POLL_INTERVAL_MS);
+      void handleTerminalFromStatus();
+    };
+
+    const scheduleReconnect = () => {
+      if (isDisposed) {
         return;
       }
 
-      if (event.type === "heartbeat") {
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        startStatusPolling();
         return;
       }
 
-      if (event.type === "error") {
-        onError((event.message as string) || "Pipeline error");
-        eventSource.close();
-        return;
-      }
+      const delay = RECONNECT_DELAYS_MS[Math.min(reconnectAttempts, RECONNECT_DELAYS_MS.length - 1)];
+      reconnectAttempts += 1;
+      reconnectTimer = setTimeout(() => {
+        if (!isDisposed) {
+          connect();
+        }
+      }, delay);
+    };
 
-      if (event.type === "human_required") {
-        onHumanRequired((event.run_id as string) || runId);
-        eventSource.close();
-        return;
-      }
+    const connect = () => {
+      stopStream();
+      eventSource = new EventSource(`${BASE_URL}/api/pipeline/${runId}/stream`);
 
-      if (event.type === "pipeline_complete") {
-        eventSource.close();
-        if (onComplete) onComplete((event.run_id as string) || runId);
-        return;
-      }
+      eventSource.onopen = () => {
+        reconnectAttempts = 0;
+        stopStatusPolling();
+      };
 
-      if (event.type === "update") {
-        const data = event.data as Record<string, unknown> | undefined;
-        if (data && typeof data === "object") {
-          for (const [key, value] of Object.entries(data)) {
-            if (value && typeof value === "object") {
-              onAgentUpdate(key, value as AgentEventPayload);
+      eventSource.onmessage = (rawEvent: MessageEvent<string>) => {
+        let event: PipelineSSEEvent;
+        try {
+          event = JSON.parse(rawEvent.data) as PipelineSSEEvent;
+        } catch {
+          onErrorRef.current("Failed to parse pipeline stream event");
+          stopStream();
+          scheduleReconnect();
+          return;
+        }
+
+        if (event.type === "heartbeat") {
+          return;
+        }
+
+        if (event.type === "error") {
+          onErrorRef.current((event.message as string) || "Pipeline error");
+          stopStream();
+          return;
+        }
+
+        if (event.type === "human_required") {
+          onHumanRequiredRef.current((event.run_id as string) || runId);
+          stopStream();
+          return;
+        }
+
+        if (event.type === "pipeline_complete") {
+          stopStream();
+          if (onCompleteRef.current) {
+            onCompleteRef.current((event.run_id as string) || runId);
+          }
+          return;
+        }
+
+        if (event.type === "update") {
+          const data = event.data as Record<string, unknown> | undefined;
+          if (data && typeof data === "object") {
+            for (const [key, value] of Object.entries(data)) {
+              if (value && typeof value === "object") {
+                onAgentUpdateRef.current(key, value as AgentEventPayload);
+              }
             }
           }
         }
-      }
+      };
+
+      eventSource.onerror = () => {
+        stopStream();
+        scheduleReconnect();
+      };
     };
 
-    eventSource.onerror = () => {
-      onError("Pipeline stream connection failed");
-      eventSource.close();
-    };
+    connect();
 
     return () => {
-      eventSource.close();
+      isDisposed = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
+      stopStatusPolling();
+      stopStream();
     };
-  }, [runId, onAgentUpdate, onHumanRequired, onError, onComplete]);
+  }, [runId]);
 }

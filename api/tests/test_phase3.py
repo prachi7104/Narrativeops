@@ -427,7 +427,6 @@ def test_format_agent_saves_metrics(mocker):
         ),
     )
     mocker.patch("api.agents.format_agent.write_pipeline_outputs", return_value=None)
-    mocker.patch("api.agents.format_agent.write_audit_log", return_value=None)
     mocker.patch("api.agents.format_agent.update_run_status", return_value=None)
     save_metrics = mocker.patch("api.agents.format_agent.save_pipeline_metrics", return_value=None)
 
@@ -458,7 +457,6 @@ def test_format_agent_continues_if_metrics_fails(mocker):
         ),
     )
     mocker.patch("api.agents.format_agent.write_pipeline_outputs", return_value=None)
-    mocker.patch("api.agents.format_agent.write_audit_log", return_value=None)
     mocker.patch("api.agents.format_agent.update_run_status", return_value=None)
     mocker.patch(
         "api.agents.format_agent.save_pipeline_metrics",
@@ -485,7 +483,6 @@ def test_format_agent_generates_faq_and_publisher_outputs(mocker):
         ),
     )
     write_outputs = mocker.patch("api.agents.format_agent.write_pipeline_outputs", return_value=None)
-    mocker.patch("api.agents.format_agent.write_audit_log", return_value=None)
     mocker.patch("api.agents.format_agent.update_run_status", return_value=None)
     mocker.patch("api.agents.format_agent.save_pipeline_metrics", return_value=None)
 
@@ -530,7 +527,6 @@ def test_format_agent_prioritizes_best_channel_in_selected_output_options(mocker
         ),
     )
     mocker.patch("api.agents.format_agent.write_pipeline_outputs", return_value=None)
-    mocker.patch("api.agents.format_agent.write_audit_log", return_value=None)
     mocker.patch("api.agents.format_agent.update_run_status", return_value=None)
     mocker.patch("api.agents.format_agent.save_pipeline_metrics", return_value=None)
 
@@ -555,7 +551,6 @@ def test_format_agent_builds_hindi_whatsapp_variant(mocker):
         ),
     )
     write_outputs = mocker.patch("api.agents.format_agent.write_pipeline_outputs", return_value=None)
-    mocker.patch("api.agents.format_agent.write_audit_log", return_value=None)
     mocker.patch("api.agents.format_agent.update_run_status", return_value=None)
     mocker.patch("api.agents.format_agent.save_pipeline_metrics", return_value=None)
 
